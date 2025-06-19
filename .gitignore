@@ -1,0 +1,72 @@
+# Build outputs
+dist/
+out/
+*.vsix
+
+# Dependencies
+node_modules/
+npm-debug.log*
+package-lock.json
+
+# VS Code
+.vscode-test/
+.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
+.temp/
+
+# Coverage
+coverage/
+*.lcov
+
+# TypeScript
+*.tsbuildinfo
+
+# Editor directories and files
+.idea/
+*.swp
+*.swo
+
+# Testing
+.nyc_output/
+
+# Runtime
+*.pid
+*.seed
+*.pid.lock
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Cache
+.cache/
+.npm/
+.eslintcache
+
+# Build artifacts specific to this extension
+webview.js
+webview.css
+extension.js
+extension.js.map
+webview.js.map
+webview.css.map
+.claude/pipeline-logs/*
+
+# SonarQube configuration (contains sensitive data)
+.scannerwork/
+.sonar

@@ -1,0 +1,1 @@
+node scripts/scan-secrets.js --pre-commit && npm run type-check && npx lint-staged

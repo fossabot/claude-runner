@@ -1,0 +1,30 @@
+{
+  "name": "Claude Runner",
+  "version": "0.1.0",
+  "publisher": "Codingworkflow",
+  "description": "Execute Claude Code commands directly from VS Code with an intuitive interface",
+  "icon": "assets/icon.png",
+  "readme": "vsix.md",
+  "repository": "https://github.com/codingworkflow/claude-runner",
+  "license": "GPL-3.0",
+  "keywords": [
+    "claude",
+    "ai",
+    "assistant",
+    "code generation",
+    "terminal",
+    "anthropic"
+  ],
+  "categories": ["Other", "AI", "Development Tools"],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "screenshots": [
+    "./assets/marketplace/conversation.png",
+    "./assets/marketplace/usage.png",
+    "./assets/marketplace/logs.png",
+    "./assets/marketplace/pipeline.png",
+    "./assets/marketplace/savepipeline.png",
+    "./assets/marketplace/chat.png"
+  ]
+}
