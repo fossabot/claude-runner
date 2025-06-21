@@ -1,4 +1,4 @@
-import { readFile } from "fs/promises";
+import { readFile, writeFile, mkdir, stat } from "fs/promises";
 import { homedir } from "os";
 import path from "path";
 import { glob } from "glob";
@@ -40,11 +40,25 @@ export interface UsageReport {
 }
 
 export interface PeriodUsageReport {
-  period: "today" | "week" | "month";
+  period: "today" | "week" | "month" | "hourly";
   startDate: string;
   endDate: string;
   dailyReports: UsageReport[];
   totals: Omit<UsageReport, "date" | "models"> & { models: string[] };
+}
+
+interface HourlyUsage {
+  hour: string; // "2025-06-19T14:00:00.000Z"
+  models: Record<
+    string,
+    {
+      input: number;
+      output: number;
+      cacheCreate: number;
+      cacheRead: number;
+      cost: number;
+    }
+  >;
 }
 
 const LITELLM_PRICING_URL =
@@ -56,6 +70,164 @@ export class UsageReportService {
   private readonly CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
   constructor() {}
+
+  // ----------  cache paths ----------
+  private getUsageDir(): string {
+    return path.join(homedir(), ".claude", "usage");
+  }
+
+  private getDateDir(date: Date): string {
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(date.getUTCDate()).padStart(2, "0");
+    return path.join(this.getUsageDir(), year.toString(), month, day);
+  }
+
+  private getMetaPath(): string {
+    return path.join(this.getUsageDir(), "meta.json");
+  }
+
+  // ----------  meta helpers ----------
+  private async readMeta(): Promise<{ last?: string }> {
+    try {
+      return JSON.parse(await readFile(this.getMetaPath(), "utf8"));
+    } catch {
+      return {};
+    }
+  }
+
+  private async writeMeta(last: string): Promise<void> {
+    await mkdir(this.getUsageDir(), { recursive: true });
+    await writeFile(this.getMetaPath(), JSON.stringify({ last }));
+  }
+
+  private async validateFolderStructure(): Promise<void> {
+    // Check if YYYY/MM/DD structure exists, if not delete meta.json and create folders
+    const now = new Date();
+    const dateDir = this.getDateDir(now);
+
+    try {
+      await stat(dateDir);
+    } catch {
+      // Folder doesn't exist, delete meta.json to force reprocessing
+      try {
+        await readFile(this.getMetaPath(), "utf8");
+        await writeFile(this.getMetaPath().replace(".json", ".json.bak"), "{}"); // backup
+        await writeFile(this.getMetaPath(), "{}"); // reset meta
+      } catch {
+        // meta.json doesn't exist, that's fine
+      }
+      // Create the folder structure
+      await mkdir(dateDir, { recursive: true });
+    }
+  }
+
+  // ----------  cache file naming ----------
+  private hourlyFilename(dt: Date): string {
+    const hour = String(dt.getUTCHours()).padStart(2, "0");
+    return path.join(this.getDateDir(dt), `${hour}.json`);
+  }
+
+  private dailyFilename(dt: Date): string {
+    return path.join(this.getDateDir(dt), "daily.json");
+  }
+
+  private async appendToHourly(
+    hour: string,
+    delta: HourlyUsage,
+  ): Promise<void> {
+    const dt = new Date(hour);
+    const fp = this.hourlyFilename(dt);
+    await mkdir(this.getDateDir(dt), { recursive: true });
+
+    let current: HourlyUsage;
+    try {
+      const content = await readFile(fp, "utf8");
+      current = content.trim() ? JSON.parse(content) : { hour, models: {} };
+    } catch {
+      current = { hour, models: {} };
+    }
+
+    // merge per-model numbers
+    for (const [model, m] of Object.entries(delta.models)) {
+      const tgt = (current.models[model] ||= {
+        input: 0,
+        output: 0,
+        cacheCreate: 0,
+        cacheRead: 0,
+        cost: 0,
+      });
+      tgt.input += m.input;
+      tgt.output += m.output;
+      tgt.cacheCreate += m.cacheCreate;
+      tgt.cacheRead += m.cacheRead;
+      tgt.cost += m.cost;
+    }
+    await writeFile(fp, JSON.stringify(current));
+  }
+
+  private async aggregateDaily(date: Date): Promise<void> {
+    const dateDir = this.getDateDir(date);
+    const dailyFile = this.dailyFilename(date);
+
+    // Check if daily aggregation already exists
+    try {
+      await stat(dailyFile);
+      return; // Already aggregated
+    } catch {
+      // Need to aggregate
+    }
+
+    const dailyUsage: Record<
+      string,
+      {
+        input: number;
+        output: number;
+        cacheCreate: number;
+        cacheRead: number;
+        cost: number;
+      }
+    > = {};
+
+    // Read all hourly files for this date
+    for (let hour = 0; hour < 24; hour++) {
+      const hourFile = path.join(
+        dateDir,
+        `${hour.toString().padStart(2, "0")}.json`,
+      );
+      try {
+        const hourData: HourlyUsage = JSON.parse(
+          await readFile(hourFile, "utf8"),
+        );
+        for (const [model, stats] of Object.entries(hourData.models)) {
+          const existing = dailyUsage[model] || {
+            input: 0,
+            output: 0,
+            cacheCreate: 0,
+            cacheRead: 0,
+            cost: 0,
+          };
+          existing.input += stats.input;
+          existing.output += stats.output;
+          existing.cacheCreate += stats.cacheCreate;
+          existing.cacheRead += stats.cacheRead;
+          existing.cost += stats.cost;
+          dailyUsage[model] = existing;
+        }
+      } catch {
+        // Hour file doesn't exist, skip
+      }
+    }
+
+    // Save daily aggregation
+    await writeFile(
+      dailyFile,
+      JSON.stringify({
+        date: this.formatDate(date.toISOString()),
+        models: dailyUsage,
+      }),
+    );
+  }
 
   private async fetchPricing(): Promise<Map<string, ModelPricing>> {
     const now = Date.now();
@@ -207,6 +379,15 @@ export class UsageReportService {
     return `${year}-${month}-${day}`;
   }
 
+  private formatHour(dateStr: string): string {
+    const date = new Date(dateStr);
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(date.getUTCDate()).padStart(2, "0");
+    const hour = String(date.getUTCHours()).padStart(2, "0");
+    return `${year}-${month}-${day} ${hour}:00 UTC`;
+  }
+
   private createUniqueHash(data: UsageData): string | null {
     const messageId = data.message.id;
     const requestId = data.requestId;
@@ -218,7 +399,7 @@ export class UsageReportService {
     return `${messageId}:${requestId}`;
   }
 
-  private async loadUsageData(): Promise<UsageData[]> {
+  private async readNewLines(since: Date): Promise<UsageData[]> {
     const claudePath = this.getDefaultClaudePath();
     const claudeDir = path.join(claudePath, "projects");
 
@@ -233,10 +414,16 @@ export class UsageReportService {
       }
 
       const processedHashes = new Set<string>();
-      const allEntries: UsageData[] = [];
+      const newEntries: UsageData[] = [];
 
       for (const file of files) {
         try {
+          // 🚀 FAST EXIT – file hasn't changed since we last saw it
+          const { mtime } = await stat(file);
+          if (mtime <= since) {
+            continue;
+          }
+
           const content = await readFile(file, "utf-8");
           const lines = content
             .trim()
@@ -252,6 +439,12 @@ export class UsageReportService {
                 continue;
               }
 
+              // Skip entries older than since
+              const entryDate = new Date(data.timestamp);
+              if (entryDate <= since) {
+                continue;
+              }
+
               // Check for duplicates
               const uniqueHash = this.createUniqueHash(data);
               if (uniqueHash && processedHashes.has(uniqueHash)) {
@@ -262,7 +455,7 @@ export class UsageReportService {
                 processedHashes.add(uniqueHash);
               }
 
-              allEntries.push(data);
+              newEntries.push(data);
             } catch {
               // Skip invalid JSON lines
             }
@@ -272,17 +465,77 @@ export class UsageReportService {
         }
       }
 
-      return allEntries;
+      return newEntries;
     } catch (error) {
-      console.error("Failed to load usage data:", error);
+      console.error("Failed to read new usage data:", error);
       return [];
     }
   }
 
+  private async loadUsageData(): Promise<UsageData[]> {
+    const meta = await this.readMeta();
+    const since = meta.last ? new Date(meta.last) : new Date(0);
+
+    const rawLines = await this.readNewLines(since);
+    if (rawLines.length === 0) {
+      return [];
+    }
+
+    const byHour: Record<string, HourlyUsage> = {};
+    let newest = since;
+
+    for (const entry of rawLines) {
+      const ts = new Date(entry.timestamp);
+      if (ts > newest) {
+        newest = ts;
+      }
+      const hourIso = ts.toISOString().slice(0, 13) + ":00:00.000Z";
+
+      const m = entry.message.model ?? "unknown";
+      byHour[hourIso] ??= { hour: hourIso, models: {} };
+      const agg = (byHour[hourIso].models[m] ||= {
+        input: 0,
+        output: 0,
+        cacheCreate: 0,
+        cacheRead: 0,
+        cost: 0,
+      });
+
+      agg.input += entry.message.usage.input_tokens;
+      agg.output += entry.message.usage.output_tokens;
+      agg.cacheCreate += entry.message.usage.cache_creation_input_tokens ?? 0;
+      agg.cacheRead += entry.message.usage.cache_read_input_tokens ?? 0;
+      agg.cost +=
+        entry.costUSD ?? (await this.calculateCost(entry.message.usage, m));
+    }
+
+    // persist each hour block
+    for (const h of Object.values(byHour)) {
+      await this.appendToHourly(h.hour, h);
+    }
+
+    await this.writeMeta(newest.toISOString());
+    return [];
+  }
+
+  /**
+   * Make sure the on-disk hourly cache is current.
+   * `loadUsageData()` already performs a meta-timestamp check internally,
+   * so calling it once is enough – if there is nothing new it returns almost
+   * immediately, otherwise it processes the fresh lines and updates meta.
+   */
+  private async ensureCache(): Promise<void> {
+    await this.validateFolderStructure(); // Check folders first
+    await this.loadUsageData(); // single scan, single write
+  }
+
   public async generateReport(
-    period: "today" | "week" | "month",
+    period: "today" | "week" | "month" | "hourly",
+    hours?: number,
+    startHour?: number,
   ): Promise<PeriodUsageReport> {
-    const usageData = await this.loadUsageData();
+    // Bring the hourly cache up to date (cheap no-op when unchanged)
+    await this.ensureCache();
 
     const now = new Date();
     let startDate: Date;
@@ -304,29 +557,199 @@ export class UsageReportService {
         startDate.setDate(now.getDate() - 29);
         startDate.setHours(0, 0, 0, 0);
         break;
-    }
+      case "hourly": {
+        const totalHours = hours ?? 5;
+        const start = startHour ?? now.getUTCHours();
 
-    // Filter data by date range
-    const filteredData = usageData.filter((entry) => {
-      const entryDate = new Date(entry.timestamp);
-      return entryDate >= startDate && entryDate <= endDate;
-    });
+        startDate = new Date(now);
+        if (start < 0) {
+          // Negative hours mean we go back to yesterday
+          startDate.setUTCDate(startDate.getUTCDate() - 1);
+          startDate.setUTCHours(24 + start, 0, 0, 0); // Convert -4 to 20 (yesterday 20:00)
+        } else {
+          startDate.setUTCHours(start, 0, 0, 0);
+        }
 
-    // Group by date
-    const dailyData = new Map<string, UsageData[]>();
-    for (const entry of filteredData) {
-      const date = this.formatDate(entry.timestamp);
-      if (!dailyData.has(date)) {
-        dailyData.set(date, []);
+        // Calculate end date/time
+        endDate.setTime(startDate.getTime());
+        endDate.setUTCHours(
+          endDate.getUTCHours() + totalHours - 1,
+          59,
+          59,
+          999,
+        );
+        break;
       }
-      dailyData.get(date)?.push(entry);
     }
 
-    // Generate daily reports
+    // Optimize data loading: use daily aggregates for past days, hourly for today
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+
+    const hourlyData: HourlyUsage[] = [];
+
+    // Process date by date
+    const currentDate = new Date(startDate);
+
+    while (currentDate <= endDate) {
+      const dayStart = new Date(currentDate);
+      dayStart.setUTCHours(0, 0, 0, 0);
+
+      if (dayStart.getTime() < today.getTime()) {
+        // Past day: aggregate if needed and use daily file
+        await this.aggregateDaily(dayStart);
+        try {
+          const dailyFile = this.dailyFilename(dayStart);
+          const dailyData = JSON.parse(await readFile(dailyFile, "utf8"));
+
+          // Convert daily data to hourly format for compatibility
+          hourlyData.push({
+            hour: dayStart.toISOString(),
+            models: dailyData.models,
+          });
+        } catch {
+          // Daily file doesn't exist, skip this day
+        }
+        // Move to next day
+        currentDate.setUTCDate(currentDate.getUTCDate() + 1);
+        currentDate.setUTCHours(0, 0, 0, 0);
+      } else {
+        // Today: use hourly files within the time range
+        for (
+          let hour = Math.max(0, startDate.getUTCHours());
+          hour <= 23;
+          hour++
+        ) {
+          const hourDate = new Date(dayStart);
+          hourDate.setUTCHours(hour, 0, 0, 0);
+
+          if (hourDate > endDate) {
+            break;
+          }
+          if (hourDate < startDate) {
+            continue;
+          }
+
+          try {
+            const hourFile = this.hourlyFilename(hourDate);
+            const hourData = JSON.parse(await readFile(hourFile, "utf8"));
+            hourlyData.push(hourData);
+          } catch {
+            // Hour file doesn't exist, skip
+          }
+        }
+        break; // Today is the last day we process
+      }
+    }
+
+    // For hourly period, create ONE aggregated block instead of multiple reports
+    if (period === "hourly") {
+      const allModels = new Set<string>();
+      const aggregatedStats = new Map<
+        string,
+        {
+          inputTokens: number;
+          outputTokens: number;
+          cacheCreateTokens: number;
+          cacheReadTokens: number;
+          cost: number;
+        }
+      >();
+
+      // Aggregate all hourly data into one block
+      for (const hourData of hourlyData) {
+        for (const [model, stats] of Object.entries(hourData.models)) {
+          if (model !== "<synthetic>") {
+            allModels.add(model);
+          }
+
+          const existing = aggregatedStats.get(model) ?? {
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheCreateTokens: 0,
+            cacheReadTokens: 0,
+            cost: 0,
+          };
+
+          aggregatedStats.set(model, {
+            inputTokens: existing.inputTokens + stats.input,
+            outputTokens: existing.outputTokens + stats.output,
+            cacheCreateTokens: existing.cacheCreateTokens + stats.cacheCreate,
+            cacheReadTokens: existing.cacheReadTokens + stats.cacheRead,
+            cost: existing.cost + stats.cost,
+          });
+        }
+      }
+
+      // Calculate totals for the single aggregated block
+      let totalInputTokens = 0;
+      let totalOutputTokens = 0;
+      let totalCacheCreateTokens = 0;
+      let totalCacheReadTokens = 0;
+      let totalCost = 0;
+
+      for (const stats of aggregatedStats.values()) {
+        totalInputTokens += stats.inputTokens;
+        totalOutputTokens += stats.outputTokens;
+        totalCacheCreateTokens += stats.cacheCreateTokens;
+        totalCacheReadTokens += stats.cacheReadTokens;
+        totalCost += stats.cost;
+      }
+
+      const totalTokens =
+        totalInputTokens +
+        totalOutputTokens +
+        totalCacheCreateTokens +
+        totalCacheReadTokens;
+
+      const hoursCount = hours ?? 5;
+      const hourlyLabel = `${hoursCount} Hours (${this.formatHour(startDate.toISOString())} - ${this.formatHour(endDate.toISOString())})`;
+
+      return {
+        period,
+        startDate: this.formatDate(startDate.toISOString()),
+        endDate: this.formatDate(endDate.toISOString()),
+        dailyReports: [
+          {
+            date: hourlyLabel,
+            models: Array.from(allModels).filter((m) => m !== "unknown"),
+            inputTokens: totalInputTokens,
+            outputTokens: totalOutputTokens,
+            cacheCreateTokens: totalCacheCreateTokens,
+            cacheReadTokens: totalCacheReadTokens,
+            totalTokens,
+            costUSD: totalCost,
+          },
+        ],
+        totals: {
+          inputTokens: totalInputTokens,
+          outputTokens: totalOutputTokens,
+          cacheCreateTokens: totalCacheCreateTokens,
+          cacheReadTokens: totalCacheReadTokens,
+          totalTokens,
+          costUSD: totalCost,
+          models: Array.from(allModels).filter(
+            (m) => m !== "unknown" && m !== "<synthetic>",
+          ),
+        },
+      };
+    }
+
+    // For other periods, group by date
+    const groupedData = new Map<string, HourlyUsage[]>();
+    for (const hourData of hourlyData) {
+      const date = this.formatDate(hourData.hour);
+      if (!groupedData.has(date)) {
+        groupedData.set(date, []);
+      }
+      groupedData.get(date)?.push(hourData);
+    }
+
+    // Generate reports (daily or hourly based on period)
     const dailyReports: UsageReport[] = [];
     const allModels = new Set<string>();
 
-    for (const [date, entries] of dailyData) {
+    for (const [dateOrHour, hoursData] of groupedData) {
       const modelStats = new Map<
         string,
         {
@@ -338,38 +761,28 @@ export class UsageReportService {
         }
       >();
 
-      for (const entry of entries) {
-        const model = entry.message.model ?? "unknown";
-        if (model !== "<synthetic>") {
-          allModels.add(model);
+      for (const hourData of hoursData) {
+        for (const [model, stats] of Object.entries(hourData.models)) {
+          if (model !== "<synthetic>") {
+            allModels.add(model);
+          }
+
+          const existing = modelStats.get(model) ?? {
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheCreateTokens: 0,
+            cacheReadTokens: 0,
+            cost: 0,
+          };
+
+          modelStats.set(model, {
+            inputTokens: existing.inputTokens + stats.input,
+            outputTokens: existing.outputTokens + stats.output,
+            cacheCreateTokens: existing.cacheCreateTokens + stats.cacheCreate,
+            cacheReadTokens: existing.cacheReadTokens + stats.cacheRead,
+            cost: existing.cost + stats.cost,
+          });
         }
-
-        const existing = modelStats.get(model) ?? {
-          inputTokens: 0,
-          outputTokens: 0,
-          cacheCreateTokens: 0,
-          cacheReadTokens: 0,
-          cost: 0,
-        };
-
-        const usage = entry.message.usage;
-        let cost = entry.costUSD ?? 0;
-
-        // If no pre-calculated cost, calculate it
-        if (!cost && model && model !== "unknown") {
-          cost = await this.calculateCost(usage, model);
-        }
-
-        modelStats.set(model, {
-          inputTokens: existing.inputTokens + usage.input_tokens,
-          outputTokens: existing.outputTokens + usage.output_tokens,
-          cacheCreateTokens:
-            existing.cacheCreateTokens +
-            (usage.cache_creation_input_tokens ?? 0),
-          cacheReadTokens:
-            existing.cacheReadTokens + (usage.cache_read_input_tokens ?? 0),
-          cost: existing.cost + cost,
-        });
       }
 
       // Aggregate totals for the day
@@ -398,7 +811,7 @@ export class UsageReportService {
         totalCacheReadTokens;
 
       dailyReports.push({
-        date,
+        date: dateOrHour,
         models: modelsUsed.filter((m) => m !== "unknown"),
         inputTokens: totalInputTokens,
         outputTokens: totalOutputTokens,
