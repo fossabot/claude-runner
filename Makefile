@@ -11,6 +11,14 @@ help:
 	@echo "  make dev           - Start development mode (alias for watch)"
 	@echo "  make clean         - Remove build artifacts"
 	@echo "  make test          - Run tests"
+	@echo "  make test-main-window - Run main window load test only"
+	@echo "  make test-unit     - Run unit tests only"
+	@echo "  make test-e2e      - Run end-to-end tests only"
+	@echo "  make test-integration - Run integration tests only"
+	@echo "  make test-all-coverage - Run all tests with coverage"
+	@echo "  make test-claude-detection - Run Claude CLI detection test"
+	@echo "  make test-ci-without-claude - Run CI tests without Claude CLI"
+	@echo "  make test-ci-with-claude - Run CI tests with Claude CLI"
 	@echo "  make test-watch    - Run tests in watch mode"
 	@echo "  make lint          - Run ESLint and fix issues"
 	@echo "  make validate      - Run tests and linting"
@@ -46,6 +54,8 @@ setup:
 # Build the extension (compile only)
 build:
 	@echo "🔧 Compiling TypeScript..."
+	@echo "Trying direct TypeScript compilation first..."
+	@npx tsc --project tsconfig.json --outDir out || echo "Direct tsc failed, trying webpack..."
 	@npm run compile || true
 	@echo "✅ Extension compiled successfully"
 
@@ -100,8 +110,70 @@ clean:
 
 # Run tests
 test:
-	@echo "🧪 Running tests..."
-	@npm run test
+	@echo "Running tests..."
+	@npm run test:unit
+
+# Run main window load test only
+test-main-window:
+	@echo "🧪 Running main window load test..."
+	@npm run test:main-window
+
+# Run unit tests only
+test-unit:
+	@echo "🧪 Running unit tests..."
+	@npm run test:unit
+
+# Run end-to-end tests only
+test-e2e:
+	@echo "🧪 Running end-to-end tests..."
+	@npm run test:e2e
+
+# Run integration tests only
+test-integration:
+	@echo "🧪 Running integration tests..."
+	@npm run test:integration
+
+# Run all Jest tests with coverage
+test-all-coverage:
+	@echo "🧪 Running all tests with coverage..."
+	@npm run test:all:coverage
+
+# Run Claude CLI detection test
+test-claude-detection:
+	@echo "🔍 Running Claude CLI detection test..."
+	@npm run test:claude-detection
+
+# Run CI tests without Claude CLI
+test-ci-without-claude:
+	@echo "Running CI tests without Claude CLI..."
+	@npm run test:ci:without-claude
+
+# Run CI tests with Claude CLI
+test-ci-with-claude:
+	@echo "Running CI tests with Claude CLI..."
+	@npm run test:ci:with-claude
+
+# Install system dependencies for CI
+setup-ci:
+	@echo "Installing CI system dependencies..."
+	@sudo apt-get update
+	@sudo apt-get install -y xvfb make
+
+# Setup test environment for CI
+setup-test-env:
+	@echo "Setting up test environment..."
+	@export DISPLAY=:99; Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 & sleep 2
+
+# Install Claude CLI for testing
+install-claude-cli:
+	@echo "Installing Claude CLI..."
+	@npm install -g @anthropic-ai/claude-code
+
+# Setup Claude CLI configuration for testing
+setup-claude-config:
+	@echo "Setting up Claude CLI configuration..."
+	@mkdir -p ~/.claude
+	@echo '{"api_key": "test-key-for-ci", "default_model": "claude-sonnet-4-20250514"}' > ~/.claude/config.json
 
 # Run tests in watch mode
 test-watch:

@@ -1,9 +1,8 @@
-// @ts-check
-"use strict";
-
 const path = require("path");
 
-/** @type {import('webpack').Configuration} */
+console.log("🔧 Fixed webpack config loading...");
+
+// Extension config
 const extensionConfig = {
   target: "node",
   mode: "none",
@@ -17,28 +16,24 @@ const extensionConfig = {
     vscode: "commonjs vscode",
   },
   resolve: {
-    extensions: [".ts", ".tsx", ".js", ".jsx"],
+    extensions: [".ts", ".tsx", ".js"],
   },
   module: {
     rules: [
       {
-        test: /\.tsx?$/,
-        exclude: [/node_modules/, /\.test\.tsx?$/, /test\//, /__tests__\//],
-        use: [
-          {
-            loader: "ts-loader",
-            options: {
-              configFile: "tsconfig.json",
-            },
-          },
-        ],
+        test: /\.ts$/,
+        exclude: /node_modules/,
+        loader: "ts-loader",
+        options: {
+          transpileOnly: true,
+        },
       },
     ],
   },
   devtool: "nosources-source-map",
 };
 
-/** @type {import('webpack').Configuration} */
+// Webview config
 const webviewConfig = {
   target: "web",
   mode: "none",
@@ -48,21 +43,17 @@ const webviewConfig = {
     filename: "webview.js",
   },
   resolve: {
-    extensions: [".ts", ".tsx", ".js", ".jsx"],
+    extensions: [".ts", ".tsx", ".js"],
   },
   module: {
     rules: [
       {
         test: /\.tsx?$/,
-        exclude: [/node_modules/, /\.test\.tsx?$/, /test\//, /__tests__\//],
-        use: [
-          {
-            loader: "ts-loader",
-            options: {
-              configFile: "tsconfig.json",
-            },
-          },
-        ],
+        exclude: /node_modules/,
+        loader: "ts-loader",
+        options: {
+          transpileOnly: true,
+        },
       },
       {
         test: /\.css$/,
