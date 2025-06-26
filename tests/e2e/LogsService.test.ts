@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeEach } from "@jest/globals";
 import { LogsService } from "../../src/services/LogsService";
 
 describe("LogsService", () => {
@@ -7,13 +8,13 @@ describe("LogsService", () => {
     logsService = new LogsService();
   });
 
-  test("should create LogsService instance", () => {
+  it("should create LogsService instance", () => {
     expect(logsService).toBeDefined();
     expect(logsService.clearCache).toBeDefined();
     expect(logsService.formatTimestamp).toBeDefined();
   });
 
-  test("should format timestamps correctly", () => {
+  it("should format timestamps correctly", () => {
     const testTimestamp = "2024-01-01T10:00:00.000Z";
 
     const formattedDateTime = logsService.formatTimestamp(testTimestamp);
@@ -25,7 +26,7 @@ describe("LogsService", () => {
     expect(formattedTime).toMatch(/\d{1,2}:\d{2}/);
   });
 
-  test("should handle invalid timestamps gracefully", () => {
+  it("should handle invalid timestamps gracefully", () => {
     const invalidTimestamp = "invalid-timestamp";
 
     const formattedDateTime = logsService.formatTimestamp(invalidTimestamp);
@@ -37,9 +38,8 @@ describe("LogsService", () => {
     expect(formattedTime).toBe("Invalid Date");
   });
 
-  test("should clear cache correctly", () => {
+  it("should clear cache correctly", () => {
     logsService.clearCache();
-    // If we get here without error, the test passes
     expect(true).toBe(true);
   });
 });

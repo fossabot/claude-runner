@@ -2,12 +2,12 @@
   "name": "claude-runner",
   "displayName": "Claude Runner",
   "description": "Execute Claude Code commands directly from VS Code with an intuitive interface",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "publisher": "Codingworkflow",
   "private": true,
   "license": "GPL-3.0",
   "icon": "assets/icon.png",
-  "readme": "vsix.md",
+  "readme": "README.md",
   "repository": {
     "type": "git",
     "url": "https://github.com/codingworkflow/claude-runner"
@@ -17,15 +17,23 @@
   },
   "categories": [
     "Other",
+    "AI",
+    "Chat",
+    "Programming Languages",
+    "Education",
     "Machine Learning"
   ],
   "keywords": [
     "claude",
+    "claude code",
     "ai",
     "assistant",
     "code generation",
     "terminal",
-    "anthropic"
+    "anthropic",
+    "Code Assist",
+    "Pair Programmer",
+    "LLM"
   ],
   "activationEvents": [],
   "main": "./dist/extension.js",
@@ -69,6 +77,31 @@
       {
         "command": "claude-runner.recheckClaude",
         "title": "Claude Runner: Recheck Claude Installation"
+      },
+      {
+        "command": "claude-runner.refreshCommands",
+        "title": "Refresh Commands",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "claude-runner.addGlobalCommand",
+        "title": "Add Global Command",
+        "icon": "$(add)"
+      },
+      {
+        "command": "claude-runner.addProjectCommand",
+        "title": "Add Project Command",
+        "icon": "$(add)"
+      },
+      {
+        "command": "claude-runner.refreshUsageReport",
+        "title": "Refresh Usage Report",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "claude-runner.refreshLogs",
+        "title": "Refresh Logs",
+        "icon": "$(refresh)"
       }
     ],
     "viewsContainers": {
@@ -76,7 +109,7 @@
         {
           "id": "claude-runner",
           "title": "Claude Runner",
-          "icon": "$(run)"
+          "icon": "assets/logo.png"
         }
       ]
     },
@@ -85,9 +118,23 @@
         {
           "type": "webview",
           "id": "claude-runner.mainView",
-          "name": "Claude Runner",
+          "name": "Chat & Pipeline",
           "icon": "$(terminal)",
           "contextualTitle": "Claude Runner Control Panel"
+        },
+        {
+          "type": "webview",
+          "id": "claude-runner.commandsView",
+          "name": "Commands",
+          "icon": "$(symbol-keyword)",
+          "contextualTitle": "Claude Commands Manager"
+        },
+        {
+          "type": "webview",
+          "id": "claude-runner.usageLogsView",
+          "name": "Usage & Logs",
+          "icon": "$(graph)",
+          "contextualTitle": "Usage Reports & Conversation Logs"
         }
       ]
     },
@@ -166,24 +213,14 @@
       ],
       "view/title": [
         {
-          "command": "claude-runner.runInteractive",
+          "command": "claude-runner.openSettings",
           "when": "view == claude-runner.mainView",
           "group": "navigation@1"
         },
         {
-          "command": "claude-runner.toggleAdvancedTabs",
-          "when": "view == claude-runner.mainView",
-          "group": "navigation@2"
-        },
-        {
-          "command": "claude-runner.openSettings",
-          "when": "view == claude-runner.mainView",
-          "group": "navigation@3"
-        },
-        {
           "command": "claude-runner.openInEditor",
           "when": "view == claude-runner.mainView",
-          "group": "navigation@4"
+          "group": "navigation@2"
         }
       ]
     }
@@ -192,22 +229,19 @@
     "preinstall": "node scripts/sync-version.js",
     "vscode:prepublish": "npm run compile-production",
     "compile": "webpack --mode none",
-    "compile-debug": "webpack --config webpack.debug.config.js --mode none",
-    "compile-simple": "webpack --config webpack.simple.config.js --mode none",
     "compile-production": "webpack --mode production --devtool hidden-source-map",
     "watch": "webpack --watch --mode development",
     "compile-tests": "tsc -p ./tsconfig.test.json --outDir out",
     "watch-tests": "tsc -p ./tsconfig.test.json -w --outDir out",
-    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "pretest": "npm run lint",
     "lint": "eslint src --ext ts,tsx",
-    "test": "node ./out/src/test/runTest.js",
-    "test:main-window": "tsc -p ./tsconfig.vscode-test.json --outDir out && node ./out/src/test/runMainWindowTest.js",
+    "test": "npm run test:unit",
+    "test:integration": "npm run compile-tests && node ./out/tests/unit/runTest.js",
     "test:unit": "jest",
     "test:unit:watch": "jest --watch",
     "test:unit:coverage": "jest --coverage",
     "test:e2e": "jest --testPathPattern=tests/e2e --passWithNoTests",
     "test:e2e:coverage": "jest --testPathPattern=tests/e2e --coverage",
-    "test:integration": "jest --testPathPattern=tests/integration --passWithNoTests",
     "test:integration:coverage": "jest --testPathPattern=tests/integration --coverage",
     "test:all": "npm run test:unit && npm run test:e2e && npm run test:integration",
     "test:all:coverage": "jest --coverage --testPathPattern=\"(tests/e2e|tests/integration|src/test/services)\"",
@@ -228,15 +262,20 @@
     "version:bump": "node scripts/bump-version.js",
     "scan-secrets": "node scripts/scan-secrets.js",
     "scan-secrets:all": "node scripts/scan-secrets.js --all",
-    "generate-icons": "node scripts/generate-icons.js",
     "prepare-marketplace": "node scripts/prepare-marketplace.js",
     "optimize-images": "node scripts/optimize-images.js",
     "quality": "npm run lint && npm run type-check && npm run format:check",
     "quality:fix": "npm run lint -- --fix && npm run format",
     "validate": "npm run quality && npm run test:unit",
-    "ci": "npm run clean && npm run quality && npm run compile && npm run test:unit"
+    "ci": "npm run clean && npm run quality && npm run compile && npm run test:unit",
+    "analyze-css": "node scripts/analyze-css.js",
+    "analyze-css:clean": "npm run analyze-css && echo '\n🧹 To clean up unused CSS, review the report above and manually remove unused rules.'",
+    "cleanup-css": "node scripts/cleanup-css.js plan",
+    "cleanup-css:auto": "node scripts/cleanup-css.js auto-clean",
+    "cleanup-css:list": "node scripts/cleanup-css.js list"
   },
   "devDependencies": {
+    "@fullhuman/postcss-purgecss": "^7.0.2",
     "@testing-library/jest-dom": "^6.0.0",
     "@testing-library/react": "^14.0.0",
     "@testing-library/user-event": "^14.0.0",
@@ -276,6 +315,7 @@
     "@types/react-dom": "^18.2.0",
     "glob": "^10.3.10",
     "js-yaml": "^4.1.0",
+    "process": "^0.11.10",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "rxjs": "^7.8.2"

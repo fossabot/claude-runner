@@ -1,7 +1,7 @@
 module.exports = {
   preset: "ts-jest",
   testEnvironment: "jsdom",
-  roots: ["<rootDir>/src", "<rootDir>/tests"],
+  roots: ["<rootDir>/tests"],
   testMatch: [
     "**/__tests__/**/*.+(ts|tsx|js)",
     "**/?(*.)+(spec|test).+(ts|tsx|js)",
@@ -11,28 +11,34 @@ module.exports = {
       "ts-jest",
       {
         useESM: false,
-        tsconfig: "tsconfig.jest.json",
+        tsconfig: {
+          types: ["jest", "node"],
+        },
       },
     ],
   },
   moduleNameMapper: {
     "\\.(css|less|scss|sass)$": "identity-obj-proxy",
-    "^vscode$": "<rootDir>/src/test/__mocks__/vscode.js",
+    "^vscode$": "<rootDir>/tests/unit/__mocks__/vscode.js",
+    "^sinon$": "<rootDir>/node_modules/sinon/lib/sinon.js",
   },
-  setupFilesAfterEnv: ["<rootDir>/src/test/setup.ts"],
+  setupFilesAfterEnv: ["<rootDir>/tests/unit/setup.ts"],
   collectCoverageFrom: [
     "src/**/*.{ts,tsx}",
     "!src/**/*.d.ts",
-    "!src/test/suite/**",
-    "!src/test/runTest.ts",
-    "!src/test/runMainWindowTest.ts",
+    "!src/test/**",
+    "!src/**/__tests__/**",
+    "!src/**/*.test.{ts,tsx}",
+    "!src/**/*.spec.{ts,tsx}",
   ],
-  testPathIgnorePatterns: [
-    "<rootDir>/node_modules/",
-    "<rootDir>/src/test/suite/",
-    "<rootDir>/out/",
-    "<rootDir>/src/test/services/PipelineService.test.ts",
-    "<rootDir>/src/test/services/WorkflowService.test.ts",
-    "<rootDir>/src/test/services/WorkflowParser.test.ts",
-  ],
+  coverageDirectory: "coverage",
+  coverageReporters: ["text", "lcov", "html"],
+  coverageThreshold: {
+    global: {
+      branches: 70,
+      functions: 70,
+      lines: 70,
+      statements: 70,
+    },
+  },
 };

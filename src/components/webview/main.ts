@@ -1,8 +1,11 @@
 // Claude Runner Webview Entry Point
 import * as React from "react";
 import * as ReactDOM from "react-dom/client";
-import App, { initialState } from "../App";
-import "../styles.css";
+import MainView from "../views/MainView";
+import CommandsView from "../views/CommandsView";
+import UsageView from "../views/UsageView";
+import { ExtensionProvider } from "../../contexts/ExtensionContext";
+import "../../styles/main.css";
 
 // Setup global VS Code API
 declare global {
@@ -11,6 +14,10 @@ declare global {
       postMessage: (message: Record<string, unknown>) => void;
     };
     vscodeApi: { postMessage: (message: Record<string, unknown>) => void };
+    initialViewType?: "main" | "commands" | "usage";
+    // Legacy functions for backwards compatibility
+    renderUsageLogsApp?: () => void;
+    renderCommandsApp?: () => void;
   }
 }
 
@@ -24,7 +31,7 @@ if (
 
 let reactRoot: ReactDOM.Root | null = null;
 
-// Initialize the app when DOM is ready
+// Initialize the specific view app when DOM is ready
 function initializeApp() {
   const container = document.getElementById("root");
   if (!container) {
@@ -32,34 +39,30 @@ function initializeApp() {
     return;
   }
 
-  // Create React root and render initial app
+  // Determine which view component to render based on initialViewType
+  let ViewComponent: React.ComponentType;
+  switch (window.initialViewType) {
+    case "commands":
+      ViewComponent = CommandsView;
+      break;
+    case "usage":
+      ViewComponent = UsageView;
+      break;
+    case "main":
+    default:
+      ViewComponent = MainView;
+      break;
+  }
+
+  // Create React root and render the specific view wrapped in context
   reactRoot = ReactDOM.createRoot(container);
-  reactRoot.render(React.createElement(App, initialState));
-
-  // Handle messages from the extension
-  window.addEventListener("message", (event) => {
-    const message = event.data;
-
-    // Only re-render the app for actual state updates, not component-specific messages
-    if (
-      message.command === "usageReportData" ||
-      message.command === "usageReportError" ||
-      message.command === "logProjectsData" ||
-      message.command === "logProjectsError" ||
-      message.command === "logConversationsData" ||
-      message.command === "logConversationsError" ||
-      message.command === "logConversationData" ||
-      message.command === "logConversationError"
-    ) {
-      // These messages are handled by component-specific panels directly
-      return;
-    }
-
-    // Update app with new props from extension
-    if (reactRoot) {
-      reactRoot.render(React.createElement(App, message));
-    }
-  });
+  reactRoot.render(
+    React.createElement(
+      ExtensionProvider,
+      null,
+      React.createElement(ViewComponent),
+    ),
+  );
 
   // Request initial state from extension
   if (window.vscodeApi) {
@@ -84,3 +87,15 @@ if (document.readyState === "loading") {
 } else {
   initializeApp();
 }
+
+// DEPRECATED: Legacy functions kept for backwards compatibility
+// These are no longer used but maintained to prevent errors
+window.renderUsageLogsApp = function () {
+  console.warn("renderUsageLogsApp is deprecated. Use unified app instead.");
+  initializeApp();
+};
+
+window.renderCommandsApp = function () {
+  console.warn("renderCommandsApp is deprecated. Use unified app instead.");
+  initializeApp();
+};

@@ -9,6 +9,7 @@ import { UsageReportService } from "../services/UsageReportService";
 import { ClaudeVersionService } from "../services/ClaudeVersionService";
 import { ClaudeDetectionService } from "../services/ClaudeDetectionService";
 import { LogsService } from "../services/LogsService";
+import { CommandsService, CommandFile } from "../services/CommandsService";
 import { getModelIds } from "../models/ClaudeModels";
 
 export interface ControllerCallbacks {
@@ -20,11 +21,21 @@ export interface ControllerCallbacks {
   onLogConversationsError?: (error: string) => void;
   onLogConversationData?: (data: unknown) => void;
   onLogConversationError?: (error: string) => void;
+  onCommandScanResult?: (data: {
+    globalCommands: CommandFile[];
+    projectCommands: CommandFile[];
+  }) => void;
 }
 
 export class RunnerController implements EventBus {
   readonly state$ = new BehaviorSubject<UIState>(this.getInitialState());
   private callbacks: ControllerCallbacks = {};
+  private readonly commandsService: CommandsService;
+
+  // Public method to get current state value
+  public getCurrentState(): UIState {
+    return this.state$.value;
+  }
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -37,10 +48,14 @@ export class RunnerController implements EventBus {
     private readonly logsService: LogsService,
     private readonly availablePipelines: string[] = [],
   ) {
+    // Initialize commands service
+    this.commandsService = new CommandsService(context);
+
     // Set up pipeline service root path
     const currentState = this.state$.value;
     if (currentState.rootPath) {
       this.pipelineService.setRootPath(currentState.rootPath);
+      this.commandsService.setRootPath(currentState.rootPath);
     }
 
     // Listen for workspace changes
@@ -122,6 +137,18 @@ export class RunnerController implements EventBus {
         break;
       case "recheckClaude":
         void this.recheckClaude(cmd.shell);
+        break;
+      case "scanCommands":
+        void this.scanCommands(cmd.rootPath);
+        break;
+      case "openFile":
+        void this.openFile(cmd.path);
+        break;
+      case "createCommand":
+        void this.createCommand(cmd.name, cmd.isGlobal, cmd.rootPath);
+        break;
+      case "deleteCommand":
+        void this.deleteCommand(cmd.path);
         break;
       case "webviewError":
         console.error("Webview error:", cmd.error);
@@ -406,6 +433,7 @@ export class RunnerController implements EventBus {
   private async updateRootPath(path: string): Promise<void> {
     this.updateState({ rootPath: path });
     this.pipelineService.setRootPath(path);
+    this.commandsService.setRootPath(path);
     await this.loadAvailablePipelines();
   }
 
@@ -497,6 +525,7 @@ export class RunnerController implements EventBus {
 
     // Ensure unique ID
     if (!newTask.id || tasks.find((t) => t.id === newTask.id)) {
+      // NOSONAR S2245 - Math.random() is safe for non-cryptographic task IDs in VSCode extension
       newTask.id = `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     }
 
@@ -732,5 +761,57 @@ export class RunnerController implements EventBus {
 
   public setCallbacks(callbacks: ControllerCallbacks): void {
     this.callbacks = callbacks;
+  }
+
+  private async scanCommands(rootPath: string): Promise<void> {
+    try {
+      // Update commands service with current root path
+      this.commandsService.setRootPath(rootPath);
+
+      // Scan commands using the service
+      const result = await this.commandsService.scanCommands();
+
+      // Send results back to webview
+      this.callbacks.onCommandScanResult?.(result);
+    } catch (error) {
+      console.error(
+        "RunnerController.scanCommands: Error scanning commands:",
+        error,
+      );
+      this.callbacks.onCommandScanResult?.({
+        globalCommands: [],
+        projectCommands: [],
+      });
+    }
+  }
+
+  private async openFile(filePath: string): Promise<void> {
+    await this.commandsService.openCommandFile(filePath);
+  }
+
+  private async createCommand(
+    name: string,
+    isGlobal: boolean,
+    rootPath: string,
+  ): Promise<void> {
+    // Update commands service with current root path
+    this.commandsService.setRootPath(rootPath);
+    await this.commandsService.createCommand(name, isGlobal);
+    await this.scanCommands(rootPath);
+  }
+
+  private async deleteCommand(filePath: string): Promise<void> {
+    const fileName = filePath.split("/").pop()?.replace(".md", "") ?? "command";
+    const confirmed = await vscode.window.showWarningMessage(
+      `Are you sure you want to delete the command "${fileName}"?`,
+      { modal: true },
+      "Delete",
+    );
+
+    if (confirmed === "Delete") {
+      await this.commandsService.deleteCommand(filePath);
+      const currentState = this.state$.value;
+      await this.scanCommands(currentState.rootPath);
+    }
   }
 }

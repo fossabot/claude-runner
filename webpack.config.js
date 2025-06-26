@@ -1,8 +1,9 @@
+// @ts-check
+"use strict";
+
 const path = require("path");
 
-console.log("🔧 Fixed webpack config loading...");
-
-// Extension config
+/** @type {import('webpack').Configuration} */
 const extensionConfig = {
   target: "node",
   mode: "none",
@@ -16,24 +17,28 @@ const extensionConfig = {
     vscode: "commonjs vscode",
   },
   resolve: {
-    extensions: [".ts", ".tsx", ".js"],
+    extensions: [".ts", ".tsx", ".js", ".jsx"],
   },
   module: {
     rules: [
       {
-        test: /\.ts$/,
-        exclude: /node_modules/,
-        loader: "ts-loader",
-        options: {
-          transpileOnly: true,
-        },
+        test: /\.tsx?$/,
+        exclude: [/node_modules/, /\.test\.tsx?$/, /test\//, /__tests__\//],
+        use: [
+          {
+            loader: "ts-loader",
+            options: {
+              configFile: "tsconfig.json",
+            },
+          },
+        ],
       },
     ],
   },
   devtool: "nosources-source-map",
 };
 
-// Webview config
+/** @type {import('webpack').Configuration} */
 const webviewConfig = {
   target: "web",
   mode: "none",
@@ -43,20 +48,28 @@ const webviewConfig = {
     filename: "webview.js",
   },
   resolve: {
-    extensions: [".ts", ".tsx", ".js"],
+    extensions: [".ts", ".tsx", ".js", ".jsx"],
+    fallback: {
+      process: require.resolve("process/browser"),
+    },
   },
   module: {
     rules: [
       {
         test: /\.tsx?$/,
-        exclude: /node_modules/,
-        loader: "ts-loader",
-        options: {
-          transpileOnly: true,
-        },
+        exclude: [/node_modules/, /\.test\.tsx?$/, /test\//, /__tests__\//],
+        use: [
+          {
+            loader: "ts-loader",
+            options: {
+              configFile: "tsconfig.json",
+            },
+          },
+        ],
       },
       {
         test: /\.css$/,
+        include: path.resolve(__dirname, "src/styles"),
         use: ["style-loader", "css-loader"],
       },
     ],

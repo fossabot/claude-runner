@@ -6,6 +6,7 @@ out/
 # Dependencies
 node_modules/
 npm-debug.log*
+package-lock.json
 
 # VS Code
 .vscode-test/
@@ -41,7 +42,6 @@ coverage/
 
 # Testing
 .nyc_output/
-.ruff_cache/
 
 # Runtime
 *.pid
@@ -66,8 +66,12 @@ extension.js.map
 webview.js.map
 webview.css.map
 .claude/pipeline-logs/*
+!tests/fixtures/logs/**
 
 # SonarQube configuration (contains sensitive data)
 .scannerwork/
 .sonar
-claude-detection-report.json
+!.vscode/settings.json
+
+# CSS Analysis Reports
+css-analysis-report.json
