@@ -1,10 +1,11 @@
-.PHONY: setup build build-vsix watch package clean test test-coverage lint dev install-local install-devcontainer help validate dev-prepare dev-install uninstall-extension get-extension-id version-patch version-minor version-major sync-version sonar scan-secrets generate-icons prepare-marketplace analyze-css cleanup-css cleanup-css-auto
+.PHONY: setup setup-ci build build-vsix watch package clean test test-coverage lint dev install-local install-devcontainer help validate dev-prepare dev-install uninstall-extension get-extension-id version-patch version-minor version-major sync-version sonar scan-secrets generate-icons prepare-marketplace analyze-css cleanup-css cleanup-css-auto
 
 # Default target - show help
 help:
 	@echo "Claude Runner VS Code Extension - Build Commands"
 	@echo "==============================================="
 	@echo "  make setup         - Install dependencies"
+	@echo "  make setup-ci      - Install dependencies for CI environment"
 	@echo "  make build         - Build extension (compile only)"
 	@echo "  make build-vsix    - Build and package VSIX file"
 	@echo "  make watch         - Watch for changes during development"
@@ -47,6 +48,13 @@ setup:
 	@echo "🔧 Setting up git hooks..."
 	@npx husky install || echo "⚠️  Husky install failed - hooks may not work"
 	@echo "✅ Dependencies installed"
+
+# CI-specific setup (no git hooks)
+setup-ci:
+	@echo "📦 Installing dependencies for CI environment..."
+	@npm run sync-version
+	@npm install --prefer-offline --no-audit --progress=false
+	@echo "✅ CI dependencies installed"
 
 # Build the extension (compile only)
 build:
