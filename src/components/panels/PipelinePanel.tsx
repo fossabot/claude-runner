@@ -24,6 +24,10 @@ const PipelinePanel: React.FC<PipelinePanelProps> = ({ disabled }) => {
     model: defaultModel = DEFAULT_MODEL,
     status,
     currentTaskIndex,
+    discoveredWorkflows,
+    isPaused = false,
+    pausedPipelines = [],
+    resumableWorkflows = [],
   } = main;
 
   const isTasksRunning = status === "running";
@@ -51,7 +55,6 @@ const PipelinePanel: React.FC<PipelinePanelProps> = ({ disabled }) => {
       id: `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       name: `Task ${nextNumber}`,
       prompt: "",
-      resumePrevious: false,
       status: "pending" as const,
       model: defaultModel,
     };
@@ -74,9 +77,23 @@ const PipelinePanel: React.FC<PipelinePanelProps> = ({ disabled }) => {
 
   const handleLoadPipeline = () => {
     if (selectedPipeline) {
-      actions.loadPipeline(selectedPipeline);
+      // Check if it's a workflow file (contains .yml or .yaml) or a saved pipeline
+      if (
+        selectedPipeline.includes(".yml") ||
+        selectedPipeline.includes(".yaml")
+      ) {
+        // It's a discovered workflow file
+        actions.loadWorkflow(selectedPipeline);
+      } else {
+        // It's a saved pipeline
+        actions.loadPipeline(selectedPipeline);
+      }
       setSelectedPipeline("");
     }
+  };
+
+  const clearPipeline = () => {
+    actions.pipelineClearAll();
   };
 
   const removeTask = (taskId: string) => {
@@ -103,6 +120,12 @@ const PipelinePanel: React.FC<PipelinePanelProps> = ({ disabled }) => {
   const canRunTasks =
     tasks.some((task) => task.prompt.trim()) && !isTasksRunning;
 
+  const isPipelineFinished =
+    !isTasksRunning &&
+    !isPaused &&
+    tasks.some((t) => t.prompt.trim().length > 0) &&
+    tasks.some((t) => t.status === "completed" || t.status === "error");
+
   return (
     <div className="pipeline-panel">
       <PathSelector
@@ -124,6 +147,9 @@ const PipelinePanel: React.FC<PipelinePanelProps> = ({ disabled }) => {
         isTasksRunning={isTasksRunning}
         canRunTasks={canRunTasks}
         disabled={disabled}
+        status={status}
+        tasks={tasks}
+        currentTaskIndex={currentTaskIndex}
         addTask={addTask}
         cancelTask={actions.cancelTask}
         handleRunTasks={handleRunTasks}
@@ -132,6 +158,17 @@ const PipelinePanel: React.FC<PipelinePanelProps> = ({ disabled }) => {
         selectedPipeline={selectedPipeline}
         setSelectedPipeline={setSelectedPipeline}
         handleLoadPipeline={handleLoadPipeline}
+        discoveredWorkflows={discoveredWorkflows}
+        isPaused={isPaused}
+        pausedPipelines={pausedPipelines}
+        resumableWorkflows={resumableWorkflows}
+        onPausePipeline={actions.pausePipeline}
+        onResumePipeline={actions.resumePipeline}
+        onPauseWorkflow={actions.pauseWorkflow}
+        onResumeWorkflow={actions.resumeWorkflow}
+        onDeleteWorkflowState={actions.deleteWorkflowState}
+        isPipelineFinished={isPipelineFinished}
+        clearPipeline={clearPipeline}
       />
 
       <PipelineDialog

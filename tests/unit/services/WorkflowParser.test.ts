@@ -98,7 +98,7 @@ jobs:
         uses: anthropics/claude-pipeline-action@v1
         with:
           prompt: Second step
-          resume_session: \${{ steps.first.outputs.session_id }}
+          resume_session: first
 `;
       const workflow = WorkflowParser.parseYaml(yaml);
       expect(workflow.jobs.test.steps.length).toBe(2);
@@ -118,7 +118,7 @@ jobs:
         uses: anthropics/claude-pipeline-action@v1
         with:
           prompt: Second step
-          resume_session: \${{ steps.nonexistent.outputs.session_id }}
+          resume_session: nonexistent
 `;
       expect(() => WorkflowParser.parseYaml(yaml)).toThrow(
         /references unknown step/,
@@ -227,6 +227,123 @@ jobs:
         },
       });
       expect(resolved).toBe("Hello Developer, session: abc123");
+    });
+  });
+
+  describe("validateConditionalStep through workflow parsing", () => {
+    it("should accept valid conditional step with check and condition", () => {
+      const yaml = `
+name: Test Workflow
+jobs:
+  test:
+    steps:
+      - id: test-step
+        name: Test Step
+        uses: anthropics/claude-pipeline-action@v1
+        with:
+          prompt: Test prompt
+          check: npm test
+          condition: on_success
+`;
+
+      expect(() => WorkflowParser.parseYaml(yaml)).not.toThrow();
+    });
+
+    it("should accept step with check but no condition", () => {
+      const yaml = `
+name: Test Workflow
+jobs:
+  test:
+    steps:
+      - id: test-step
+        name: Test Step
+        uses: anthropics/claude-pipeline-action@v1
+        with:
+          prompt: Test prompt
+          check: make lint
+`;
+
+      expect(() => WorkflowParser.parseYaml(yaml)).not.toThrow();
+    });
+
+    it("should throw error for non-string check command", () => {
+      const yaml = `
+name: Test Workflow
+jobs:
+  test:
+    steps:
+      - id: test-step
+        name: Test Step
+        uses: anthropics/claude-pipeline-action@v1
+        with:
+          prompt: Test prompt
+          check: 123
+`;
+
+      expect(() => WorkflowParser.parseYaml(yaml)).toThrow(
+        "Check command in step 'Test Step' must be a string",
+      );
+    });
+
+    it("should throw error for invalid condition type", () => {
+      const yaml = `
+name: Test Workflow
+jobs:
+  test:
+    steps:
+      - id: test-step
+        name: Test Step
+        uses: anthropics/claude-pipeline-action@v1
+        with:
+          prompt: Test prompt
+          check: npm test
+          condition: invalid_condition
+`;
+
+      expect(() => WorkflowParser.parseYaml(yaml)).toThrow(
+        "Invalid condition type in step 'Test Step': invalid_condition",
+      );
+    });
+
+    it("should throw error for condition without check command", () => {
+      const yaml = `
+name: Test Workflow
+jobs:
+  test:
+    steps:
+      - id: test-step
+        name: Test Step
+        uses: anthropics/claude-pipeline-action@v1
+        with:
+          prompt: Test prompt
+          condition: on_success
+`;
+
+      expect(() => WorkflowParser.parseYaml(yaml)).toThrow(
+        "Step 'Test Step' has condition 'on_success' but no check command specified",
+      );
+    });
+
+    it("should accept all valid condition types", () => {
+      const conditionTypes = ["on_success", "on_failure", "always"];
+
+      conditionTypes.forEach((condition) => {
+        const yaml = `
+name: Test Workflow
+jobs:
+  test:
+    steps:
+      - id: test-step-${condition}
+        name: Test Step
+        uses: anthropics/claude-pipeline-action@v1
+        with:
+          prompt: Test prompt
+          check: npm test
+          condition: ${condition}
+`;
+
+        expect(() => WorkflowParser.parseYaml(yaml)).not.toThrow();
+      });
     });
   });
 

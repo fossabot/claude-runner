@@ -32,8 +32,16 @@ logs/
 coverage/
 *.lcov
 
-# TypeScript
+# TypeScript compilation artifacts
 *.tsbuildinfo
+*.d.ts
+*.d.ts.map
+
+# Generated JavaScript files (compiled from TypeScript)
+src/**/*.js
+src/**/*.js.map
+!src/**/*.test.js
+!src/**/*.spec.js
 
 # Editor directories and files
 .idea/
@@ -75,3 +83,23 @@ webview.css.map
 
 # CSS Analysis Reports
 css-analysis-report.json
+
+# CLI artifacts - Keep dist/ for packaging
+cli/node_modules/
+cli/*.log
+cli/*.tgz
+cli/claude-runner-cli-*.tgz
+.claude/.credentials.json
+.claude/todos
+vsix/
+
+# NPM package artifacts
+*.tgz
+claude-runner-cli-*.tgz
+.claude/projects
+.claude/
+!.claude/command
+.sonarlint/
+.github/workflows/*.json
+claude-runner
+eslint-report.json

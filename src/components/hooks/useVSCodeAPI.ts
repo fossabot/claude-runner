@@ -5,12 +5,16 @@ interface TaskItem {
   name?: string;
   prompt: string;
   resumePrevious: boolean;
-  status: "pending" | "running" | "completed" | "error";
+  status: "pending" | "running" | "completed" | "error" | "paused" | "skipped";
   results?: string;
   sessionId?: string;
   model?: string;
   dependsOn?: string[];
   continueFrom?: string | null;
+  pausedUntil?: number;
+  check?: string;
+  condition?: "on_success" | "on_failure" | "always";
+  skipReason?: string;
 }
 
 interface CommandFile {
@@ -155,13 +159,6 @@ export const useVSCodeAPI = () => {
     [sendMessage],
   );
 
-  const updateParallelTasksCount = useCallback(
-    (value: number) => {
-      sendMessage("updateParallelTasksCount", { value });
-    },
-    [sendMessage],
-  );
-
   const requestUsageReport = useCallback(
     (
       period: "today" | "week" | "month" | "hourly",
@@ -258,7 +255,6 @@ export const useVSCodeAPI = () => {
     updateChatPrompt,
     updateShowChatPrompt,
     updateOutputFormat,
-    updateParallelTasksCount,
     savePipeline,
     loadPipeline,
     pipelineAddTask,

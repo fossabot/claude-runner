@@ -61,14 +61,13 @@ describe("PipelineService YAML Format", () => {
           id: "analyze",
           name: "Analyze Code",
           prompt: "Analyze the codebase structure",
-          resumePrevious: false,
           status: "pending",
         },
         {
           id: "implement",
           name: "Implement Feature",
           prompt: "Implement the requested feature",
-          resumePrevious: true,
+          resumeFromTaskId: "analyze",
           status: "pending",
           model: "claude-3-5-sonnet-latest",
         },
@@ -76,7 +75,7 @@ describe("PipelineService YAML Format", () => {
           id: "test",
           name: "Write Tests",
           prompt: "Write comprehensive tests",
-          resumePrevious: true,
+          resumeFromTaskId: "implement",
           status: "pending",
         },
       ];
@@ -125,16 +124,75 @@ describe("PipelineService YAML Format", () => {
 
       expect(steps[1].id).toBe("implement");
       expect(steps[1].with?.model).toBe("claude-3-5-sonnet-latest");
-      expect(steps[1].with?.resume_session).toBe(
-        "${{ steps.analyze.outputs.session_id }}",
-      );
+      expect(steps[1].with?.resume_session).toBe("analyze");
       expect(steps[1].with?.output_session).toBe(true);
 
       expect(steps[2].id).toBe("test");
-      expect(steps[2].with?.resume_session).toBe(
-        "${{ steps.implement.outputs.session_id }}",
-      );
+      expect(steps[2].with?.resume_session).toBe("implement");
       expect(steps[2].with?.output_session).toBeFalsy(); // Last step shouldn't output session
+    });
+
+    it("should handle non-linear resumption (resuming from non-previous tasks)", async () => {
+      const tasks: TaskItem[] = [
+        {
+          id: "setup",
+          name: "Setup",
+          prompt: "Set up the environment",
+          status: "pending",
+        },
+        {
+          id: "analyze",
+          name: "Analyze",
+          prompt: "Analyze the code",
+          status: "pending",
+        },
+        {
+          id: "implement",
+          name: "Implement",
+          prompt: "Implement feature, resume from setup session",
+          resumeFromTaskId: "setup", // Resume from setup, not analyze
+          status: "pending",
+        },
+        {
+          id: "test",
+          name: "Test",
+          prompt: "Test the implementation, resume from analyze session",
+          resumeFromTaskId: "analyze", // Resume from analyze, not implement
+          status: "pending",
+        },
+      ];
+
+      await service.savePipeline(
+        "non-linear-test",
+        "Test non-linear resumption",
+        tasks,
+        "claude-3-5-sonnet-latest",
+        true,
+      );
+
+      const workflowPath = path.join(
+        tempDir,
+        ".github",
+        "workflows",
+        "claude-non-linear-test.yml",
+      );
+      const yamlContent = await fs.readFile(workflowPath, "utf-8");
+      const workflow = WorkflowParser.parseYaml(yamlContent);
+
+      const steps = workflow.jobs.pipeline.steps;
+      expect(steps.length).toBe(4);
+
+      // Verify that setup outputs session (needed by implement)
+      expect(steps[0].with?.output_session).toBe(true);
+
+      // Verify that analyze outputs session (needed by test)
+      expect(steps[1].with?.output_session).toBe(true);
+
+      // Verify that implement resumes from setup (not analyze)
+      expect(steps[2].with?.resume_session).toBe("setup");
+
+      // Verify that test resumes from analyze (not implement)
+      expect(steps[3].with?.resume_session).toBe("analyze");
     });
   });
 
@@ -146,7 +204,6 @@ describe("PipelineService YAML Format", () => {
           id: "task1",
           name: "First Task",
           prompt: "Do something",
-          resumePrevious: false,
           status: "pending",
         },
       ];
@@ -181,17 +238,20 @@ describe("PipelineService YAML Format", () => {
           id: "step1",
           name: "Step 1",
           prompt: "First step",
-          resumePrevious: false,
           status: "pending",
         },
         {
           id: "step2",
           name: "Step 2",
           prompt: "Second step",
-          resumePrevious: true,
+          resumeFromTaskId: "step1",
           status: "pending",
         },
       ];
+
+      // Ensure the .github/workflows directory exists before saving
+      const workflowsDir = path.join(tempDir, ".github", "workflows");
+      await fs.mkdir(workflowsDir, { recursive: true });
 
       await service.savePipeline(
         "convert-test",
@@ -205,8 +265,8 @@ describe("PipelineService YAML Format", () => {
       if (workflow) {
         const convertedTasks = service.workflowToTaskItems(workflow);
         expect(convertedTasks.length).toBe(2);
-        expect(convertedTasks[0].resumePrevious).toBe(false);
-        expect(convertedTasks[1].resumePrevious).toBe(true);
+        expect(convertedTasks[0].resumeFromTaskId).toBeUndefined();
+        expect(convertedTasks[1].resumeFromTaskId).toBe("step1");
       }
     });
   });

@@ -67,7 +67,7 @@ export interface ConversationData {
   entries: TranscriptEntry[];
 }
 
-export type Period = "hourly" | "today" | "week" | "month";
+export type Period = "hourly" | "today" | "yesterday" | "week" | "month";
 
 export interface UsageReport {
   date: string;
@@ -93,12 +93,11 @@ export type ViewType = "main" | "commands" | "usage";
 
 // State Interfaces
 export interface MainViewState {
-  activeTab: "chat" | "pipeline";
+  activeTab: "chat" | "pipeline" | "workflows" | "runner";
   model: string;
   rootPath: string;
   allowAllTools: boolean;
-  parallelTasksCount: number;
-  status: "stopped" | "running" | "starting" | "stopping";
+  status: "stopped" | "running" | "starting" | "stopping" | "paused";
   tasks: TaskItem[];
   currentTaskIndex?: number;
   results?: string;
@@ -109,6 +108,7 @@ export interface MainViewState {
   outputFormat: "text" | "json";
   availablePipelines?: string[];
   availableModels?: string[];
+  discoveredWorkflows?: { name: string; path: string }[];
   workflows: WorkflowMetadata[];
   currentWorkflow: ClaudeWorkflow | null;
   workflowInputs: Record<string, string>;
@@ -120,6 +120,25 @@ export interface MainViewState {
       output?: { result?: string; [key: string]: unknown };
     }
   >;
+
+  // Pause/Resume state
+  isPaused: boolean;
+  currentExecutionId?: string;
+  pausedPipelines: Array<{
+    pipelineId: string;
+    tasks: TaskItem[];
+    currentIndex: number;
+    pausedAt: number;
+  }>;
+  resumableWorkflows: Array<{
+    executionId: string;
+    workflowName: string;
+    workflowPath: string;
+    pausedAt: string;
+    currentStep: number;
+    totalSteps: number;
+    canResume: boolean;
+  }>;
 }
 
 export interface CommandFile {
@@ -195,7 +214,6 @@ const initialState: ExtensionState = {
     model: "claude-sonnet-4-20250514",
     rootPath: "",
     allowAllTools: false,
-    parallelTasksCount: 1,
     status: "stopped",
     tasks: [],
     currentTaskIndex: undefined,
@@ -212,6 +230,12 @@ const initialState: ExtensionState = {
     workflowInputs: {},
     executionStatus: "idle",
     stepStatuses: {},
+
+    // Pause/Resume initial state
+    isPaused: false,
+    currentExecutionId: undefined,
+    pausedPipelines: [],
+    resumableWorkflows: [],
   },
   commands: {
     activeTab: "global",
@@ -301,15 +325,15 @@ export interface ExtensionActions {
   updateModel: (model: string) => void;
   updateRootPath: (path: string) => void;
   updateAllowAllTools: (allow: boolean) => void;
-  updateActiveTab: (tab: "chat" | "pipeline") => void;
+  updateActiveTab: (tab: "chat" | "pipeline" | "workflows" | "runner") => void;
   updateChatPrompt: (prompt: string) => void;
   updateShowChatPrompt: (show: boolean) => void;
   updateOutputFormat: (format: "text" | "json") => void;
-  updateParallelTasksCount: (value: number) => void;
   savePipeline: (name: string, description: string, tasks: TaskItem[]) => void;
   loadPipeline: (name: string) => void;
   pipelineAddTask: (newTask: TaskItem) => void;
   pipelineRemoveTask: (taskId: string) => void;
+  pipelineClearAll: () => void;
   pipelineUpdateTaskField: (
     taskId: string,
     field: keyof TaskItem,
@@ -324,6 +348,12 @@ export interface ExtensionActions {
   runWorkflow: () => void;
   cancelWorkflow: () => void;
   createSampleWorkflow: () => void;
+  pausePipeline: () => void;
+  resumePipeline: (executionId: string) => void;
+  pauseWorkflow: (executionId?: string) => void;
+  resumeWorkflow: (executionId: string) => void;
+  deleteWorkflowState: (executionId: string) => void;
+  getResumableWorkflows: () => void;
 
   // Commands View Actions
   updateCommandsState: (updates: Partial<CommandsViewState>) => void;
@@ -335,7 +365,7 @@ export interface ExtensionActions {
   // Usage View Actions
   updateUsageState: (updates: Partial<UsageViewState>) => void;
   requestUsageReport: (
-    period: "today" | "week" | "month" | "hourly",
+    period: "today" | "yesterday" | "week" | "month" | "hourly",
     hours?: number,
     startHour?: number,
   ) => void;
@@ -407,7 +437,7 @@ export const ExtensionProvider: React.FC<{ children: ReactNode }> = ({
       sendMessage("updateAllowAllTools", { allow });
     },
 
-    updateActiveTab: (tab: "chat" | "pipeline") => {
+    updateActiveTab: (tab: "chat" | "pipeline" | "workflows" | "runner") => {
       sendMessage("updateActiveTab", { tab });
     },
 
@@ -421,10 +451,6 @@ export const ExtensionProvider: React.FC<{ children: ReactNode }> = ({
 
     updateOutputFormat: (format: "text" | "json") => {
       sendMessage("updateOutputFormat", { format });
-    },
-
-    updateParallelTasksCount: (value: number) => {
-      sendMessage("updateParallelTasksCount", { value });
     },
 
     savePipeline: (name: string, description: string, tasks: TaskItem[]) => {
@@ -441,6 +467,10 @@ export const ExtensionProvider: React.FC<{ children: ReactNode }> = ({
 
     pipelineRemoveTask: (taskId: string) => {
       sendMessage("pipelineRemoveTask", { taskId });
+    },
+
+    pipelineClearAll: () => {
+      sendMessage("pipelineClearAll");
     },
 
     pipelineUpdateTaskField: (
@@ -487,6 +517,31 @@ export const ExtensionProvider: React.FC<{ children: ReactNode }> = ({
       sendMessage("createSampleWorkflow");
     },
 
+    // Pause/Resume Actions
+    pauseWorkflow: (executionId?: string) => {
+      sendMessage("pauseWorkflow", { executionId });
+    },
+
+    resumeWorkflow: (executionId: string) => {
+      sendMessage("resumeWorkflow", { executionId });
+    },
+
+    pausePipeline: () => {
+      sendMessage("pausePipeline");
+    },
+
+    resumePipeline: (pipelineId: string) => {
+      sendMessage("resumePipeline", { pipelineId });
+    },
+
+    getResumableWorkflows: () => {
+      sendMessage("getResumableWorkflows");
+    },
+
+    deleteWorkflowState: (executionId: string) => {
+      sendMessage("deleteWorkflowState", { executionId });
+    },
+
     // Commands View Actions
     updateCommandsState: (updates: Partial<CommandsViewState>) => {
       dispatch({ type: "UPDATE_COMMANDS_STATE", updates });
@@ -514,7 +569,7 @@ export const ExtensionProvider: React.FC<{ children: ReactNode }> = ({
     },
 
     requestUsageReport: (
-      period: "today" | "week" | "month" | "hourly",
+      period: "today" | "yesterday" | "week" | "month" | "hourly",
       hours?: number,
       startHour?: number,
     ) => {
@@ -706,6 +761,11 @@ export const ExtensionProvider: React.FC<{ children: ReactNode }> = ({
               "showChatPrompt",
               "availablePipelines",
               "availableModels",
+              "discoveredWorkflows",
+              "isPaused",
+              "pausedPipelines",
+              "resumableWorkflows",
+              "currentExecutionId",
             ];
 
             const mainUpdates: Partial<MainViewState> = {};

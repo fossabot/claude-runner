@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs/promises";
-import { TaskItem } from "./ClaudeCodeService";
+import { TaskItem } from "../core/models/Task";
 import { ClaudeWorkflow, ClaudeStep } from "../types/WorkflowTypes";
 import { WorkflowParser } from "./WorkflowParser";
 
@@ -77,7 +77,7 @@ export class PipelineService {
         pipeline: {
           name: "Pipeline Execution",
           "runs-on": "ubuntu-latest",
-          steps: tasks.map((task, index) => {
+          steps: tasks.map((task, _index) => {
             const step: ClaudeStep = {
               id: task.id,
               name: task.name ?? `Task ${task.id}`,
@@ -90,13 +90,27 @@ export class PipelineService {
             };
 
             // Handle session resumption
-            if (task.resumePrevious && index > 0) {
-              step.with.resume_session = `\${{ steps.${tasks[index - 1].id}.outputs.session_id }}`;
+            if (task.resumeFromTaskId) {
+              const sourceTask = tasks.find(
+                (t) => t.id === task.resumeFromTaskId,
+              );
+              if (sourceTask) {
+                step.with.resume_session = sourceTask.id;
+              }
             }
 
             // Output session for next step if needed
-            if (index < tasks.length - 1 && tasks[index + 1].resumePrevious) {
+            if (tasks.some((t) => t.resumeFromTaskId === task.id)) {
               step.with.output_session = true;
+            }
+
+            // Add check and condition properties if defined
+            if (task.check) {
+              step.with.check = task.check;
+            }
+
+            if (task.condition) {
+              step.with.condition = task.condition;
             }
 
             return step;
@@ -175,6 +189,54 @@ export class PipelineService {
     return pipelines;
   }
 
+  async discoverWorkflowFiles(): Promise<{ name: string; path: string }[]> {
+    const workflows: { name: string; path: string }[] = [];
+
+    if (!this.rootPath) {
+      return workflows;
+    }
+
+    try {
+      const files = await fs.readdir(this.workflowsDir);
+
+      for (const file of files) {
+        if (
+          file.startsWith("claude") &&
+          (file.endsWith(".yml") || file.endsWith(".yaml"))
+        ) {
+          const filePath = path.join(this.workflowsDir, file);
+          try {
+            const content = await fs.readFile(filePath, "utf-8");
+            const workflow = WorkflowParser.parseYaml(content);
+
+            workflows.push({
+              name: workflow.name || file.replace(/\.ya?ml$/, ""),
+              path: filePath,
+            });
+          } catch (error) {
+            console.warn(`Failed to parse workflow file ${file}:`, error);
+          }
+        }
+      }
+    } catch (error) {
+      // No workflows directory found
+    }
+
+    return workflows;
+  }
+
+  async loadWorkflowFromFile(filePath: string): Promise<ClaudeWorkflow | null> {
+    try {
+      const content = await fs.readFile(filePath, "utf-8");
+      const workflow = WorkflowParser.parseYaml(content);
+      return workflow;
+    } catch (error) {
+      console.error(`Failed to load workflow from ${filePath}:`, error);
+      vscode.window.showErrorMessage(`Failed to load workflow from file`);
+      return null;
+    }
+  }
+
   async deletePipeline(name: string): Promise<void> {
     try {
       const workflowFilename = `claude-${name.toLowerCase().replace(/[^a-z0-9]/g, "-")}.yml`;
@@ -207,13 +269,17 @@ export class PipelineService {
           const claudeStep = step as ClaudeStep;
 
           // Check if this step resumes from a previous one
-          let resumePrevious = false;
+          let resumeFromTaskId: string | undefined;
           if (claudeStep.with.resume_session) {
-            const match = claudeStep.with.resume_session.match(
+            // Handle both old format ${{ steps.x.outputs.session_id }} and new simple format (just step ID)
+            const oldFormatMatch = claudeStep.with.resume_session.match(
               /\$\{\{\s*steps\.(\w+)\.outputs\.session_id\s*\}\}/,
             );
-            if (match) {
-              resumePrevious = true;
+            if (oldFormatMatch) {
+              resumeFromTaskId = oldFormatMatch[1];
+            } else {
+              // Simple format: just the step ID
+              resumeFromTaskId = claudeStep.with.resume_session;
             }
           }
 
@@ -221,9 +287,11 @@ export class PipelineService {
             id: step.id ?? `step-${tasks.length}`,
             name: step.name,
             prompt: claudeStep.with.prompt,
-            resumePrevious,
+            resumeFromTaskId,
             status: "pending",
             model: claudeStep.with.model,
+            check: claudeStep.with.check,
+            condition: claudeStep.with.condition,
           });
         }
       }

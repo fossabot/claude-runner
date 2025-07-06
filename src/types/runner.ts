@@ -36,13 +36,19 @@ export type RunnerCommand =
   | { kind: "runTask"; task: string; outputFormat?: "text" | "json" }
   | { kind: "runTasks"; tasks: TaskItem[]; outputFormat?: "text" | "json" }
   | { kind: "cancelTask" }
+  | { kind: "pauseWorkflow"; executionId?: string }
+  | { kind: "resumeWorkflow"; executionId: string }
+  | { kind: "pausePipeline" }
+  | { kind: "resumePipeline"; pipelineId: string }
+  | { kind: "getResumableWorkflows" }
+  | { kind: "deleteWorkflowState"; executionId: string }
   | { kind: "updateModel"; model: string }
   | { kind: "updateRootPath"; path: string }
   | { kind: "updateAllowAllTools"; allow: boolean }
   | { kind: "browseFolder" }
   | {
       kind: "updateActiveTab";
-      tab: "chat" | "pipeline" | "usage" | "logs";
+      tab: "chat" | "pipeline" | "workflows" | "runner" | "usage" | "logs";
     }
   | { kind: "updateChatPrompt"; prompt: string }
   | { kind: "updateShowChatPrompt"; show: boolean }
@@ -54,18 +60,19 @@ export type RunnerCommand =
       tasks: TaskItem[];
     }
   | { kind: "loadPipeline"; name: string }
+  | { kind: "loadWorkflow"; workflowId: string }
   | { kind: "pipelineAddTask"; newTask: TaskItem }
   | { kind: "pipelineRemoveTask"; taskId: string }
+  | { kind: "pipelineClearAll" }
   | {
       kind: "pipelineUpdateTaskField";
       taskId: string;
       field: keyof TaskItem;
       value: unknown;
     }
-  | { kind: "updateParallelTasksCount"; value: number }
   | {
       kind: "requestUsageReport";
-      period: "today" | "week" | "month" | "hourly";
+      period: "today" | "yesterday" | "week" | "month" | "hourly";
       hours?: number;
       startHour?: number;
     }
@@ -107,6 +114,24 @@ export const RunnerCommandRegistry: {
         : undefined,
   }),
   cancelTask: () => ({ kind: "cancelTask" }),
+  pauseWorkflow: (m) => ({
+    kind: "pauseWorkflow",
+    executionId: isString(m.executionId) ? m.executionId : undefined,
+  }),
+  resumeWorkflow: (m) => ({
+    kind: "resumeWorkflow",
+    executionId: isString(m.executionId) ? m.executionId : "",
+  }),
+  pausePipeline: () => ({ kind: "pausePipeline" }),
+  resumePipeline: (m) => ({
+    kind: "resumePipeline",
+    pipelineId: isString(m.pipelineId) ? m.pipelineId : "",
+  }),
+  getResumableWorkflows: () => ({ kind: "getResumableWorkflows" }),
+  deleteWorkflowState: (m) => ({
+    kind: "deleteWorkflowState",
+    executionId: isString(m.executionId) ? m.executionId : "",
+  }),
   updateModel: (m) => ({
     kind: "updateModel",
     model: isString(m.model) ? m.model : "",
@@ -123,8 +148,17 @@ export const RunnerCommandRegistry: {
   updateActiveTab: (m) => ({
     kind: "updateActiveTab",
     tab:
-      isString(m.tab) && ["chat", "pipeline", "usage", "logs"].includes(m.tab)
-        ? (m.tab as "chat" | "pipeline" | "usage" | "logs")
+      isString(m.tab) &&
+      ["chat", "pipeline", "workflows", "runner", "usage", "logs"].includes(
+        m.tab,
+      )
+        ? (m.tab as
+            | "chat"
+            | "pipeline"
+            | "workflows"
+            | "runner"
+            | "usage"
+            | "logs")
         : "chat",
   }),
   updateChatPrompt: (m) => ({
@@ -152,6 +186,10 @@ export const RunnerCommandRegistry: {
     kind: "loadPipeline",
     name: isString(m.name) ? m.name : "",
   }),
+  loadWorkflow: (m) => ({
+    kind: "loadWorkflow",
+    workflowId: isString(m.workflowId) ? m.workflowId : "",
+  }),
   pipelineAddTask: (m) => ({
     kind: "pipelineAddTask",
     newTask: isTaskItem(m.newTask)
@@ -162,22 +200,19 @@ export const RunnerCommandRegistry: {
     kind: "pipelineRemoveTask",
     taskId: isString(m.taskId) ? m.taskId : "",
   }),
+  pipelineClearAll: () => ({ kind: "pipelineClearAll" }),
   pipelineUpdateTaskField: (m) => ({
     kind: "pipelineUpdateTaskField",
     taskId: isString(m.taskId) ? m.taskId : "",
     field: isString(m.field) ? (m.field as keyof TaskItem) : "prompt",
     value: m.value,
   }),
-  updateParallelTasksCount: (m) => ({
-    kind: "updateParallelTasksCount",
-    value: isNumber(m.value) ? m.value : 1,
-  }),
   requestUsageReport: (m) => ({
     kind: "requestUsageReport",
     period:
       isString(m.period) &&
-      ["today", "week", "month", "hourly"].includes(m.period)
-        ? (m.period as "today" | "week" | "month" | "hourly")
+      ["today", "yesterday", "week", "month", "hourly"].includes(m.period)
+        ? (m.period as "today" | "yesterday" | "week" | "month" | "hourly")
         : "today",
     hours: isNumber(m.hours) ? m.hours : undefined,
     startHour: isNumber(m.startHour) ? m.startHour : undefined,
@@ -226,21 +261,43 @@ export interface UIState {
   model: string;
   rootPath: string;
   allowAllTools: boolean;
-  parallelTasksCount: number;
 
   // Tab state
-  activeTab: "chat" | "pipeline" | "usage" | "logs";
+  activeTab: "chat" | "pipeline" | "workflows" | "runner" | "usage" | "logs";
   showAdvancedTabs: boolean;
 
   // Pipeline state
   outputFormat: "text" | "json";
   tasks: TaskItem[];
   currentTaskIndex?: number;
+  availablePipelines: string[];
+  discoveredWorkflows?: { name: string; path: string }[];
+  workflowPath?: string;
 
   // Task execution state
+  status: "idle" | "running" | "completed" | "error" | "paused";
   lastTaskResults?: string;
   taskCompleted: boolean;
   taskError: boolean;
+
+  // Pause/Resume state
+  isPaused: boolean;
+  currentExecutionId?: string;
+  pausedPipelines: Array<{
+    pipelineId: string;
+    tasks: TaskItem[];
+    currentIndex: number;
+    pausedAt: number;
+  }>;
+  resumableWorkflows: Array<{
+    executionId: string;
+    workflowName: string;
+    workflowPath: string;
+    pausedAt: string;
+    currentStep: number;
+    totalSteps: number;
+    canResume: boolean;
+  }>;
 
   // Chat state
   chatPrompt: string;
@@ -263,7 +320,6 @@ export interface EventBus {
 
 // Message types for webview communication
 export type WebviewMessage = UIState & {
-  status: "idle" | "running" | "stopped";
   results?: string;
   availablePipelines: string[];
   availableModels: string[];

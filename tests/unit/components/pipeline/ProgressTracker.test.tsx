@@ -11,22 +11,19 @@ describe("ProgressTracker", () => {
       name: "Task 1",
       prompt: "Prompt 1",
       status: "completed",
-      results: "Results 1",
-      resumePrevious: false,
+      results: '{"result": "Results 1"}',
     },
     {
       id: "2",
       name: "Task 2",
       prompt: "Prompt 2",
       status: "running",
-      resumePrevious: false,
     },
     {
       id: "3",
       name: "Task 3",
       prompt: "Prompt 3",
       status: "pending",
-      resumePrevious: false,
     },
   ];
 
@@ -41,10 +38,10 @@ describe("ProgressTracker", () => {
 
     expect(getByText("Pipeline Progress")).toBeTruthy();
     expect(getByText("Task 1")).toBeTruthy();
-    expect(getByText("✅ Completed")).toBeTruthy();
+    expect(getByText("Completed")).toBeTruthy();
     expect(getByText("Task 2")).toBeTruthy();
-    expect(getByText("⏳ Running...")).toBeTruthy();
+    expect(getByText("Running")).toBeTruthy();
     expect(getByText("Task 3")).toBeTruthy();
-    expect(getByText("⏸️ Pending")).toBeTruthy();
+    expect(getByText("Pending")).toBeTruthy();
   });
 });

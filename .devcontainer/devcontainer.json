@@ -1,5 +1,6 @@
 {
   "name": "Claude Runner VSCode Extension",
+  "runArgs": ["--name", "claude-runner-devcontainer"],
   "build": {
     "dockerfile": "./Dockerfile.devcontainer",
     "context": "..",
@@ -17,6 +18,9 @@
     "ghcr.io/devcontainers/features/python:1": {
       "version": "3.12",
       "installTools": true
+    },
+    "ghcr.io/devcontainers/features/go:1": {
+      "version": "1.24.3"
     }
   },
   "customizations": {

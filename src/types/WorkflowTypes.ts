@@ -3,6 +3,8 @@
  * Based on GitHub Actions workflow syntax with Claude-specific extensions
  */
 
+export type ConditionType = "on_success" | "on_failure" | "always";
+
 export interface ClaudeWorkflow {
   name: string;
   on?: WorkflowTrigger;
@@ -50,9 +52,12 @@ export interface ClaudeStep extends Step {
     prompt: string;
     model?: string;
     allow_all_tools?: boolean;
+    bypass_permissions?: boolean;
     working_directory?: string;
     resume_session?: string;
     output_session?: boolean;
+    check?: string;
+    condition?: ConditionType;
     [key: string]: unknown;
   };
 }
@@ -68,7 +73,7 @@ export interface WorkflowExecution {
   inputs: Record<string, string>;
   outputs: Record<string, StepOutput>;
   currentStep: number;
-  status: "pending" | "running" | "completed" | "failed";
+  status: "pending" | "running" | "completed" | "failed" | "paused" | "timeout";
   error?: string;
 }
 
@@ -83,16 +88,25 @@ export interface WorkflowMetadata {
 
 // Type guards
 export function isClaudeStep(step: Step): step is ClaudeStep {
-  return !!step.uses && step.uses.includes("claude-pipeline-action");
+  return (
+    !!step.uses &&
+    (step.uses.includes("claude-pipeline-action") || step.uses === "claude")
+  );
 }
 
-export function hasSessionOutput(step: ClaudeStep): boolean {
-  return step.with.output_session === true;
+export function hasSessionOutput(_step: ClaudeStep): boolean {
+  // Auto-detect if session output is needed (no longer depends on output_session parameter)
+  return true; // For now, always capture session - the system will auto-detect usage
 }
 
 export function getSessionReference(value: string): string | null {
-  const match = value.match(
-    /\$\{\{\s*steps\.(\w+)\.outputs\.session_id\s*\}\}/,
-  );
-  return match ? match[1] : null;
+  // Only handle simple format: just the step ID (KISS approach)
+  // NO LONGER SUPPORT old complex format: ${{ steps.stepId.outputs.session_id }}
+  const simpleMatch = value.match(/^([a-zA-Z0-9_-]+)$/);
+  if (simpleMatch) {
+    return simpleMatch[1];
+  }
+
+  // Return null for any complex format - this will cause validation to fail
+  return null;
 }

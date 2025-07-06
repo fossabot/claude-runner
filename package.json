@@ -2,9 +2,9 @@
   "name": "claude-runner",
   "displayName": "Claude Runner",
   "description": "Execute Claude Code commands directly from VS Code with an intuitive interface",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "Codingworkflow",
-  "private": true,
+  "private": false,
   "license": "GPL-3.0",
   "icon": "assets/icon.png",
   "readme": "README.md",
@@ -76,7 +76,7 @@
       },
       {
         "command": "claude-runner.recheckClaude",
-        "title": "Claude Runner: Recheck Claude Installation"
+        "title": "Claude Runner: Recheck Claude API Connection"
       },
       {
         "command": "claude-runner.refreshCommands",
@@ -118,7 +118,7 @@
         {
           "type": "webview",
           "id": "claude-runner.mainView",
-          "name": "Chat & Pipeline",
+          "name": "Chat & Workflows",
           "icon": "$(terminal)",
           "contextualTitle": "Claude Runner Control Panel"
         },
@@ -155,12 +155,12 @@
         "claudeRunner.defaultRootPath": {
           "type": "string",
           "default": "",
-          "description": "Default root path for Claude commands (empty = current workspace)"
+          "description": "Default root path for Claude tasks (empty = current workspace)"
         },
         "claudeRunner.allowAllTools": {
           "type": "boolean",
           "default": false,
-          "description": "Allow all tools by default (uses --dangerously-skip-permissions)"
+          "description": "Allow all tools by default"
         },
         "claudeRunner.outputFormat": {
           "type": "string",
@@ -234,7 +234,8 @@
     "compile-tests": "tsc -p ./tsconfig.test.json --outDir out",
     "watch-tests": "tsc -p ./tsconfig.test.json -w --outDir out",
     "pretest": "npm run lint",
-    "lint": "eslint src --ext ts,tsx",
+    "lint": "eslint . --ext ts,tsx --ignore-path .gitignore",
+    "lint:fix": "eslint . --ext ts,tsx --fix --ignore-path .gitignore",
     "test": "npm run test:unit",
     "test:integration": "npm run compile-tests && node ./out/tests/unit/runTest.js",
     "test:unit": "jest",
@@ -245,8 +246,7 @@
     "test:integration:coverage": "jest --testPathPattern=tests/integration --coverage",
     "test:all": "npm run test:unit && npm run test:e2e && npm run test:integration",
     "test:all:coverage": "jest --coverage --testPathPattern=\"(tests/e2e|tests/integration|src/test/services)\"",
-    "test:claude-detection": "node scripts/test-claude-detection.js",
-    "test:ci:without-claude": "npm run test:unit && npm run test:claude-detection",
+    "test:ci:without-claude": "npm run test:unit",
     "test:ci:with-claude": "npm run test:ci:without-claude && npm run test:e2e && npm run test:integration",
     "test:watch": "npm run test -- --watch",
     "clean": "rimraf dist out coverage *.vsix *.log",
@@ -266,13 +266,19 @@
     "optimize-images": "node scripts/optimize-images.js",
     "quality": "npm run lint && npm run type-check && npm run format:check",
     "quality:fix": "npm run lint -- --fix && npm run format",
+    "quality:report": "npm run lint -- --format json --output-file eslint-report.json && npm run quality:analyze",
+    "quality:analyze": "node scripts/analyze-quality.js",
+    "quality:gate": "npm run lint -- --format json --output-file eslint-report.json && node scripts/sonar-quality-gate.js",
+    "quality:help": "node scripts/quality-help.js",
     "validate": "npm run quality && npm run test:unit",
     "ci": "npm run clean && npm run quality && npm run compile && npm run test:unit",
     "analyze-css": "node scripts/analyze-css.js",
     "analyze-css:clean": "npm run analyze-css && echo '\n🧹 To clean up unused CSS, review the report above and manually remove unused rules.'",
     "cleanup-css": "node scripts/cleanup-css.js plan",
     "cleanup-css:auto": "node scripts/cleanup-css.js auto-clean",
-    "cleanup-css:list": "node scripts/cleanup-css.js list"
+    "cleanup-css:list": "node scripts/cleanup-css.js list",
+    "convert-todo": "node scripts/convert-todo-to-workflow.js",
+    "publish:extension": "node scripts/publish-extension.js"
   },
   "devDependencies": {
     "@fullhuman/postcss-purgecss": "^7.0.2",
@@ -291,6 +297,11 @@
     "@vscode/vsce": "^3.2.1",
     "css-loader": "^6.8.1",
     "eslint": "^8.56.0",
+    "eslint-plugin-complexity": "^1.0.2",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-jsdoc": "^46.10.1",
+    "eslint-plugin-sonarjs": "^3.0.4",
+    "eslint-plugin-unicorn": "^48.0.1",
     "glob": "^10.3.10",
     "husky": "^9.1.7",
     "identity-obj-proxy": "^3.0.0",
@@ -299,6 +310,7 @@
     "lint-staged": "^16.1.2",
     "mini-css-extract-plugin": "^2.7.6",
     "mocha": "^10.2.0",
+    "nyc": "^17.1.0",
     "prettier": "^3.1.1",
     "rimraf": "^5.0.5",
     "sinon": "^20.0.0",

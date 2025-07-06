@@ -221,6 +221,7 @@ All changes must pass linting and TypeScript compilation.
 - Mock only external dependencies (VSCode API, file system, processes)
 - Test from simplest to most complex scenarios
 - Use `src/test/__mocks__/` for shared mocks
+- Don't over complicate tests logic and mock and introduce complexity
 
 **Test Structure:**
 
@@ -302,11 +303,14 @@ make build
 ### Testing
 
 ```bash
-# Run all tests (Jest unit tests + VSCode integration tests)
+# Run all tests (Jest unit tests + E2E tests + VSCode integration tests)
 make test
 
 # Run only Jest unit tests
 npm run test:unit
+
+# Run E2E tests (complete workflow testing with UI simulation)
+npm run test:e2e
 
 # Unit test coverage
 npm run test:unit:coverage

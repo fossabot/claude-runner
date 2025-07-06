@@ -13,7 +13,19 @@ npm install -g @anthropic-ai/claude-code
 # Add useful aliases for development
 echo 'alias ll="ls -alF"' >> ~/.bashrc
 echo 'alias cl="claude --dangerously-skip-permissions"' >> ~/.bashrc
+echo 'alias g="git"' >> ~/.bashrc
+echo 'alias gc="git add -A && git commit -m"' >> ~/.bashrc
+echo 'alias gp="git fetch --all && git pull"' >> ~/.bashrc
+echo 'alias gf="git fetch --all && git rebase origin/master"' >> ~/.bashrc
+echo 'alias gn="git checkout -b"' >> ~/.bashrc
+echo 'alias pr="git push origin $(git rev-parse --abbrev-ref HEAD)"' >> ~/.bashrc
+echo 'alias gpr="gc pr"' >> ~/.bashrc
 echo 'export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1' >> ~/.bashrc
+echo 'export SONAR_SCANNER_VERSION=7.0.2.4839'
+echo 'export SONAR_SCANNER_HOME=$HOME/.sonar/sonar-scanner-$SONAR_SCANNER_VERSION-linux-x64'
+echo 'export PATH=$SONAR_SCANNER_HOME/bin:$PATH'
+
+yes | npx playwright install --with-deps --no-shell
 
 # Setup SonarQube Scanner (optional for code quality)
 if [ -f .sonar ]; then

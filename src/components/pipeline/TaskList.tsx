@@ -1,6 +1,7 @@
 import React from "react";
 import Button from "../common/Button";
 import { TaskItem } from "../../services/ClaudeCodeService";
+import { ConditionType } from "../../core/models/Task";
 
 interface TaskListProps {
   tasks: TaskItem[];
@@ -26,7 +27,7 @@ const TaskList: React.FC<TaskListProps> = ({
   return (
     <div className="tasks-container">
       {tasks.map((task, index) => (
-        <div key={task.id} className="task-item">
+        <div key={`task-${task.id}-${index}`} className="task-item">
           <div className="task-header">
             <input
               type="text"
@@ -39,7 +40,7 @@ const TaskList: React.FC<TaskListProps> = ({
             />
             {tasks.length > 1 && (
               <Button
-                variant="error"
+                variant="secondary"
                 onClick={() => removeTask(task.id)}
                 disabled={isTasksRunning}
               >
@@ -70,27 +71,94 @@ const TaskList: React.FC<TaskListProps> = ({
               defaultValue={task.prompt}
               onBlur={(e) => updateTask(task.id, "prompt", e.target.value)}
               placeholder="Enter your task or prompt for Claude..."
-              rows={3}
+              rows={5}
               className="task-textarea"
               disabled={isTasksRunning}
             />
           </div>
 
           {index > 0 && (
-            <div className="checkbox-group">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={!!task.resumePrevious}
-                  onChange={(e) =>
-                    updateTask(task.id, "resumePrevious", e.target.checked)
-                  }
-                  disabled={isTasksRunning}
-                />
-                Resume previous session
-              </label>
+            <div className="resume-row-inline">
+              <label className="inline-label">Resume from:</label>
+              <select
+                value={task.resumeFromTaskId ?? ""}
+                onChange={(e) =>
+                  updateTask(task.id, "resumeFromTaskId", e.target.value)
+                }
+                disabled={isTasksRunning}
+                className="condition-select-inline"
+              >
+                <option value="">New session</option>
+                {tasks.slice(0, index).map((prevTask, idx) => (
+                  <option key={prevTask.id} value={prevTask.id}>
+                    {prevTask.name ?? `Task ${idx + 1}`}
+                  </option>
+                ))}
+              </select>
             </div>
           )}
+
+          <div className="condition-controls">
+            {(!task.check || task.check.trim() === "") &&
+            (!task.condition || task.condition === "always") ? (
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  updateTask(task.id, "check", "");
+                  updateTask(task.id, "condition", "on_success");
+                }}
+                disabled={isTasksRunning}
+              >
+                Add Condition Command
+              </Button>
+            ) : (
+              <>
+                <div className="check-command-row">
+                  <label className="inline-label">Command:</label>
+                  <input
+                    type="text"
+                    value={task.check ?? ""}
+                    onChange={(e) =>
+                      updateTask(task.id, "check", e.target.value)
+                    }
+                    placeholder="Optional check command (e.g., make lint)"
+                    className="check-command-input-inline"
+                    disabled={isTasksRunning}
+                  />
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      updateTask(task.id, "check", "");
+                      updateTask(task.id, "condition", "always");
+                    }}
+                    disabled={isTasksRunning}
+                    className="remove-condition-btn"
+                  >
+                    ×
+                  </Button>
+                </div>
+                <div className="condition-row-inline">
+                  <label className="inline-label">Condition:</label>
+                  <select
+                    value={task.condition ?? "always"}
+                    onChange={(e) =>
+                      updateTask(
+                        task.id,
+                        "condition",
+                        e.target.value as ConditionType,
+                      )
+                    }
+                    disabled={isTasksRunning}
+                    className="condition-select-inline"
+                  >
+                    <option value="always">Always</option>
+                    <option value="on_success">On Success</option>
+                    <option value="on_failure">On Failure</option>
+                  </select>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       ))}
     </div>

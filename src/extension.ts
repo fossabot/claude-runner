@@ -3,17 +3,21 @@ import { ClaudeRunnerPanel } from "./providers/ClaudeRunnerPanel";
 import { CommandsWebviewProvider } from "./providers/CommandsWebviewProvider";
 import { UsageLogsWebviewProvider } from "./providers/UsageLogsWebviewProvider";
 import { ClaudeCodeService } from "./services/ClaudeCodeService";
+import { ClaudeService } from "./services/ClaudeService";
 import { TerminalService } from "./services/TerminalService";
+// import { CLIInstallationService } from "./services/CLIInstallationService"; // DISABLED
 import { ConfigurationService } from "./services/ConfigurationService";
 import { ClaudeDetectionService } from "./services/ClaudeDetectionService";
 import { UsageReportService } from "./services/UsageReportService";
 import { LogsService } from "./services/LogsService";
-import { detectParallelTasksCount } from "./utils/detectParallelTasksCount";
+import { VSCodeWorkflowStorageAdapter } from "./adapters/storage/WorkflowStorageAdapter";
+import { WorkflowStateService } from "./services/WorkflowStateService";
 
 let claudeRunnerPanel: ClaudeRunnerPanel | undefined;
 let commandsWebviewProvider: CommandsWebviewProvider | undefined;
 let usageLogsWebviewProvider: UsageLogsWebviewProvider | undefined;
 let claudeCodeService: ClaudeCodeService;
+let claudeService: ClaudeService;
 let terminalService: TerminalService;
 let configurationService: ConfigurationService;
 let usageReportService: UsageReportService;
@@ -32,14 +36,17 @@ export async function activate(context: vscode.ExtensionContext) {
   const result = await ClaudeDetectionService.detectClaude("auto");
   context.globalState.update("claude.detected", result);
 
-  // Detect parallel tasks count once at startup
-  const parallelTasks = await detectParallelTasksCount();
-  context.globalState.update("claude.parallelTasks", parallelTasks);
-
   const isClaudeInstalled = result.isInstalled;
   if (isClaudeInstalled) {
     // Initialize services only if Claude is installed
-    claudeCodeService = new ClaudeCodeService(configurationService);
+    const storageAdapter = new VSCodeWorkflowStorageAdapter(context);
+    const stateService = new WorkflowStateService(storageAdapter);
+
+    claudeCodeService = new ClaudeCodeService(
+      configurationService,
+      stateService,
+    );
+    claudeService = new ClaudeService();
     terminalService = new TerminalService(configurationService);
   }
 
@@ -121,6 +128,7 @@ export async function activate(context: vscode.ExtensionContext) {
   claudeRunnerPanel = new ClaudeRunnerPanel(
     context,
     claudeCodeService,
+    claudeService,
     terminalService,
     configurationService,
     isClaudeInstalled,
@@ -152,10 +160,14 @@ export async function activate(context: vscode.ExtensionContext) {
     logsService,
   );
 
+  // Set up CLI to be available in terminal - DISABLED
+  // await CLIInstallationService.setupCLI(context);
+
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
       "claude-runner.mainView",
       claudeRunnerPanel,
+      { webviewOptions: { retainContextWhenHidden: true } },
     ),
     vscode.window.registerWebviewViewProvider(
       CommandsWebviewProvider.viewType,
@@ -174,6 +186,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 export function deactivate() {
   claudeRunnerPanel?.dispose();
+  // CLI cleanup disabled - CLIInstallationService.cleanupCLI();
 }
 
 function showClaudeRunnerPanel(
@@ -184,6 +197,7 @@ function showClaudeRunnerPanel(
     claudeRunnerPanel = new ClaudeRunnerPanel(
       context,
       claudeCodeService,
+      claudeService,
       terminalService,
       configurationService,
       isClaudeInstalled,
@@ -323,6 +337,7 @@ async function openClaudeRunnerInEditor(
     const editorProvider = new ClaudeRunnerPanel(
       context,
       claudeCodeService,
+      claudeService,
       terminalService,
       configurationService,
       isClaudeInstalled,

@@ -102,6 +102,8 @@ const UsageReportPanel: React.FC<UsageReportPanelProps> = ({
     switch (period) {
       case "today":
         return "Today";
+      case "yesterday":
+        return "Yesterday";
       case "week":
         return "Last 7 Days";
       case "month":
@@ -139,10 +141,32 @@ const UsageReportPanel: React.FC<UsageReportPanelProps> = ({
               className="dropdown"
             >
               <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
               <option value="week">Last 7 Days</option>
               <option value="month">Last 30 Days</option>
               <option value="hourly">Hourly</option>
             </select>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+                marginLeft: "16px",
+              }}
+            >
+              <input
+                id="auto-refresh-global"
+                type="checkbox"
+                checked={autoRefresh}
+                onChange={(e) =>
+                  actions.updateUsageState({ autoRefresh: e.target.checked })
+                }
+                disabled={disabled || loading}
+              />
+              <label htmlFor="auto-refresh-global" style={{ fontSize: "12px" }}>
+                auto refresh
+              </label>
+            </div>
           </div>
         </div>
 
@@ -244,27 +268,6 @@ const UsageReportPanel: React.FC<UsageReportPanelProps> = ({
                 />
               </div>
             </div>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "4px",
-                marginTop: "8px",
-              }}
-            >
-              <input
-                id="auto-refresh"
-                type="checkbox"
-                checked={autoRefresh}
-                onChange={(e) =>
-                  actions.updateUsageState({ autoRefresh: e.target.checked })
-                }
-                disabled={disabled || loading}
-              />
-              <label htmlFor="auto-refresh" style={{ fontSize: "12px" }}>
-                auto refresh
-              </label>
-            </div>
             {limitValue > 0 && report && (
               <div style={{ marginTop: "8px" }}>
                 <div style={{ fontSize: "12px", marginBottom: "4px" }}>
@@ -329,7 +332,7 @@ const UsageReportPanel: React.FC<UsageReportPanelProps> = ({
         {report && !loading && (
           <div className="usage-report-content">
             <div className="report-summary">
-              <h4>{getPeriodLabel(selectedPeriod)} Summary</h4>
+              <h4>{getPeriodLabel(selectedPeriod)}</h4>
               <p className="date-range">
                 {report.startDate} to {report.endDate}
               </p>
@@ -388,72 +391,173 @@ const UsageReportPanel: React.FC<UsageReportPanelProps> = ({
               </div>
             </div>
 
-            {report.dailyReports.length > 0 && (
-              <div className="daily-breakdown">
-                <h4>
-                  {selectedPeriod === "hourly"
-                    ? "Hourly Breakdown"
-                    : "Daily Breakdown"}
-                </h4>
-                <div className="daily-list">
-                  {report.dailyReports.map((dailyReport) => (
-                    <div key={dailyReport.date} className="daily-item">
-                      <div className="daily-header">
-                        <span className="daily-date">{dailyReport.date}</span>
-                        <span className="daily-cost">
-                          {formatCurrency(dailyReport.costUSD)}
-                        </span>
-                      </div>
+            {(() => {
+              const shouldShowBreakdown =
+                report.dailyReports.length > 0 &&
+                !(
+                  selectedPeriod === "week" && report.dailyReports.length === 1
+                ) &&
+                !(
+                  selectedPeriod === "month" && report.dailyReports.length === 1
+                );
 
-                      <div className="daily-details">
-                        <div className="daily-row">
-                          <span className="daily-label">Models:</span>
-                          <span className="daily-value">
-                            {dailyReport.models.length > 0
-                              ? dailyReport.models.join(", ")
-                              : "None"}
-                          </span>
-                        </div>
+              return (
+                shouldShowBreakdown && (
+                  <div className="daily-breakdown">
+                    <h4>
+                      {selectedPeriod === "hourly" ||
+                      selectedPeriod === "today" ||
+                      selectedPeriod === "yesterday"
+                        ? "Hourly Breakdown"
+                        : "Daily Breakdown"}
+                    </h4>
+                    <div className="daily-list">
+                      {(() => {
+                        // Group per-model entries by time period
+                        const groupedByTime = report.dailyReports.reduce(
+                          (acc, entry) => {
+                            const timeKey = entry.date;
+                            if (!acc[timeKey]) {
+                              acc[timeKey] = [];
+                            }
+                            acc[timeKey].push(entry);
+                            return acc;
+                          },
+                          {} as Record<string, typeof report.dailyReports>,
+                        );
 
-                        <div className="daily-metrics">
-                          <div className="metric">
-                            <span className="metric-label">Input:</span>
-                            <span className="metric-value">
-                              {formatNumber(dailyReport.inputTokens)}
-                            </span>
-                          </div>
-                          <div className="metric">
-                            <span className="metric-label">Output:</span>
-                            <span className="metric-value">
-                              {formatNumber(dailyReport.outputTokens)}
-                            </span>
-                          </div>
-                          <div className="metric">
-                            <span className="metric-label">Cache C:</span>
-                            <span className="metric-value">
-                              {formatNumber(dailyReport.cacheCreateTokens)}
-                            </span>
-                          </div>
-                          <div className="metric">
-                            <span className="metric-label">Cache R:</span>
-                            <span className="metric-value">
-                              {formatNumber(dailyReport.cacheReadTokens)}
-                            </span>
-                          </div>
-                        </div>
+                        return Object.entries(groupedByTime).map(
+                          ([timeKey, entries]) => {
+                            // Calculate totals for this time period
+                            const periodTotal = entries.reduce(
+                              (sum, entry) => sum + entry.costUSD,
+                              0,
+                            );
+                            const allModels = entries
+                              .map((entry) => entry.models[0])
+                              .filter(Boolean);
 
-                        <div className="daily-total">
-                          <span className="total-label">Total Tokens:</span>
-                          <span className="total-value">
-                            {formatNumber(dailyReport.totalTokens)}
-                          </span>
-                        </div>
-                      </div>
+                            return (
+                              <div key={timeKey} className="daily-item">
+                                <div className="daily-header">
+                                  <span className="daily-date">{timeKey}</span>
+                                  <span className="daily-cost">
+                                    {formatCurrency(periodTotal)}
+                                  </span>
+                                </div>
+
+                                <div className="daily-details">
+                                  <div className="daily-row">
+                                    <span className="daily-label">Models:</span>
+                                    <span className="daily-value">
+                                      {allModels.length > 0
+                                        ? allModels.join(", ")
+                                        : "None"}
+                                    </span>
+                                  </div>
+
+                                  {/* Show per-model breakdown when multiple models */}
+                                  {entries.length > 1 && (
+                                    <div className="model-breakdown">
+                                      {entries.map((entry, idx) => (
+                                        <div key={idx} className="model-entry">
+                                          <span className="model-name">
+                                            {entry.models[0]}:
+                                          </span>
+                                          <span className="model-cost">
+                                            {formatCurrency(entry.costUSD)}
+                                          </span>
+                                          <span className="model-tokens">
+                                            ({formatNumber(entry.totalTokens)}{" "}
+                                            tokens)
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  <div className="daily-row">
+                                    <span className="daily-label">
+                                      Total Tokens:
+                                    </span>
+                                    <span className="daily-value">
+                                      {formatNumber(
+                                        entries.reduce(
+                                          (sum, entry) =>
+                                            sum + entry.totalTokens,
+                                          0,
+                                        ),
+                                      )}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="daily-metrics">
+                                  <div className="metric">
+                                    <span className="metric-label">Input:</span>
+                                    <span className="metric-value">
+                                      {formatNumber(
+                                        entries.reduce(
+                                          (sum, entry) =>
+                                            sum + entry.inputTokens,
+                                          0,
+                                        ),
+                                      )}
+                                    </span>
+                                  </div>
+                                  <div className="metric">
+                                    <span className="metric-label">
+                                      Output:
+                                    </span>
+                                    <span className="metric-value">
+                                      {formatNumber(
+                                        entries.reduce(
+                                          (sum, entry) =>
+                                            sum + entry.outputTokens,
+                                          0,
+                                        ),
+                                      )}
+                                    </span>
+                                  </div>
+                                  <div className="metric">
+                                    <span className="metric-label">
+                                      Cache C:
+                                    </span>
+                                    <span className="metric-value">
+                                      {formatNumber(
+                                        entries.reduce(
+                                          (sum, entry) =>
+                                            sum + entry.cacheCreateTokens,
+                                          0,
+                                        ),
+                                      )}
+                                    </span>
+                                  </div>
+                                  <div className="metric">
+                                    <span className="metric-label">
+                                      Cache R:
+                                    </span>
+                                    <span className="metric-value">
+                                      {formatNumber(
+                                        entries.reduce(
+                                          (sum, entry) =>
+                                            sum + entry.cacheReadTokens,
+                                          0,
+                                        ),
+                                      )}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          },
+                        );
+                      })()}
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
+                  </div>
+                )
+              );
+            })()}
 
             {report.dailyReports.length === 0 && (
               <div className="state-message no-data">
