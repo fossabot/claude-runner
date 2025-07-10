@@ -10,7 +10,7 @@ on:
 jobs:
   test-without-claude:
     name: "Test Extension without Claude CLI"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-hosted
     
     steps:
       - name: Checkout code
@@ -19,7 +19,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '23'
 
       - name: Install system dependencies
         run: make setup-ci
@@ -36,7 +36,7 @@ jobs:
         run: |
           make setup-test-env
           make test-ci-without-claude
-        timeout-minutes: 15
+        timeout-minutes: 60
 
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v4
@@ -47,7 +47,7 @@ jobs:
 
   test-with-claude:
     name: "Test Extension with Claude CLI"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-hosted
     needs: test-without-claude
     
     steps:
@@ -57,7 +57,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '23'
 
       - name: Install system dependencies
         run: make setup-ci
@@ -83,11 +83,11 @@ jobs:
         run: |
           make setup-test-env
           make test-ci-with-claude
-        timeout-minutes: 20
+        timeout-minutes: 60
 
   test-report:
     name: "Generate Test Report"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-hosted
     needs: [test-without-claude, test-with-claude]
     if: always()
     

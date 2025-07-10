@@ -28,30 +28,6 @@ Critical mistakes to avoid and the specific corrections we made during test deve
 - Missing UI interaction testing
 - Dishonest test verification
 
-### 🔍 [Integration Test Analysis](./Integration-Test-Analysis.md)
-
-Analysis of `WorkflowExecution.test.ts` showing over-mocking antipatterns and how to fix them.
-
-**Key Topics:**
-
-- Over-mocking core business logic
-- Testing deprecated session formats
-- False integration claims vs reality
-- Proper integration test boundaries
-- Fixed integration test examples
-
-### ✅ [Integration Test Fix Summary](./Integration-Test-Fix-Summary.md)
-
-Before/after comparison showing the complete fix of `WorkflowExecution.test.ts`.
-
-**Key Topics:**
-
-- Side-by-side before/after code comparison
-- Test results: false positives → real integration
-- Session reference validation proof
-- Real parser and service integration
-- Complete antipattern corrections
-
 ## Test Organization
 
 ```
