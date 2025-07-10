@@ -10,7 +10,7 @@ on:
 jobs:
   test-without-claude:
     name: "Test Extension without Claude CLI"
-    runs-on: ubuntu-hosted
+    runs-on: [self-hosted, Linux, X64]
     
     steps:
       - name: Checkout code
@@ -47,7 +47,7 @@ jobs:
 
   test-with-claude:
     name: "Test Extension with Claude CLI"
-    runs-on: ubuntu-hosted
+    runs-on: [self-hosted, Linux, X64]
     needs: test-without-claude
     
     steps:
@@ -87,7 +87,7 @@ jobs:
 
   test-report:
     name: "Generate Test Report"
-    runs-on: ubuntu-hosted
+    runs-on: [self-hosted, Linux, X64]
     needs: [test-without-claude, test-with-claude]
     if: always()
     
