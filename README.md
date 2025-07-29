@@ -3,6 +3,7 @@
 **Run complex multi-step Claude Code tasks directly in your VS Code.**
 
 ![Claude Runner Logo](https://raw.githubusercontent.com/codingworkflow/claude-runner/main/assets/icon.png)
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fcodingworkflow%2Fclaude-runner.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fcodingworkflow%2Fclaude-runner?ref=badge_shield)
 
 Chat, create and run multi-step tasks in your VS Code. Create workflows & save them to reuse.
 Get cost usage (estimate if you use subscription), and check conversation history.
@@ -123,3 +124,6 @@ GPL-3.0 - See [LICENSE](https://github.com/codingworkflow/claude-runner/blob/mai
 ---
 
 _Claude Runner is an independent project and is not officially affiliated with Anthropic PBC._
+
+
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fcodingworkflow%2Fclaude-runner.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Fcodingworkflow%2Fclaude-runner?ref=badge_large)
